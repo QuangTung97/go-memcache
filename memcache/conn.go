@@ -6,15 +6,6 @@ import (
 	"sync"
 )
 
-type commandData struct {
-	cmdCount  int
-	data      []byte // for request and response data
-	completed bool
-
-	mut  sync.Mutex
-	cond *sync.Cond
-}
-
 type sendBuffer struct {
 	mut sync.Mutex
 	buf []*commandData
@@ -138,11 +129,6 @@ func (c *conn) sendCommands(prevEnd int, newEnd int) {
 func (c *conn) pushCommand(cmd *commandData) {
 	var prevLen int
 
-	c.sendBuf.mut.Lock()
-	prevLen = len(c.sendBuf.buf)
-	c.sendBuf.push(cmd)
-	c.sendBuf.mut.Unlock()
-
 	if prevLen > 0 {
 		return
 	}
@@ -171,8 +157,6 @@ func (c *conn) waitForActiveCommands() (int, int) {
 		c.connBuf.recvCond.Wait()
 	}
 }
-
-var crlf = []byte("\r\n")
 
 func (c *conn) recvCommands() {
 	//data := make([]byte, 2048)
