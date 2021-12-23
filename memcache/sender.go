@@ -5,6 +5,25 @@ import (
 	"sync"
 )
 
+// FlushWriter ...
+type FlushWriter interface {
+	io.Writer
+	Flush() error
+}
+
+type noopFlusher struct {
+	io.Writer
+}
+
+func (f noopFlusher) Flush() error {
+	return nil
+}
+
+// NoopFlusher ...
+func NoopFlusher(w io.Writer) FlushWriter {
+	return noopFlusher{Writer: w}
+}
+
 type commandData struct {
 	cmdCount  int
 	data      []byte // for request and response data
@@ -21,7 +40,7 @@ func newCommand() *commandData {
 }
 
 type sender struct {
-	writer    io.Writer
+	writer    FlushWriter
 	writerMut sync.Mutex
 	tmpBuf    []*commandData
 
@@ -109,7 +128,7 @@ func (b *recvBuffer) read(cmdList []*commandData) int {
 	return int(n)
 }
 
-func newSender(writer io.Writer, bufSizeLog int) *sender {
+func newSender(writer FlushWriter, bufSizeLog int) *sender {
 	maxSize := 1 << bufSizeLog
 	s := &sender{
 		writer:     writer,
@@ -143,6 +162,10 @@ func (s *sender) sendToWriter() {
 		if err != nil {
 			panic(err)
 		}
+	}
+	err := s.writer.Flush()
+	if err != nil {
+		panic(err)
 	}
 
 	s.recv.push(s.tmpBuf)

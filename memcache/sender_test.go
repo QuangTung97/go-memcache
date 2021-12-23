@@ -19,7 +19,7 @@ func newCommandFromString(s string) *commandData {
 
 func TestSender_Publish(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(&buf, 8)
+	s := newSender(NoopFlusher(&buf), 8)
 
 	s.publish(newCommandFromString("mg key01 v\r\n"))
 	s.publish(newCommandFromString("mg key02 v k\r\n"))
@@ -35,7 +35,7 @@ func TestSender_Publish(t *testing.T) {
 
 func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(&buf, 8)
+	s := newSender(NoopFlusher(&buf), 8)
 
 	s.writerMut.Lock()
 
@@ -82,7 +82,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(&buf, 2)
+	s := newSender(NoopFlusher(&buf), 2)
 	assert.Equal(t, 4, s.sendBufMax)
 
 	const numRounds = 200000
