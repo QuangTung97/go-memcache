@@ -43,20 +43,13 @@ func (c *conn) pushCommand(cmd *commandData) {
 
 func (c *conn) recvCommands() {
 	tmpData := make([]byte, 1<<21)
-
-	cmdList := make([]*commandData, 128)
-	cmdListLen := 0
-	cmdListOffset := 0
-
 	msg := make([]byte, 2048)
+	cmdList := newCmdListReader(c.sender)
 
 	responseCount := 0
 
 	for {
-		if cmdListOffset >= cmdListLen {
-			cmdListLen = c.sender.readSentCommands(cmdList)
-			cmdListOffset = 0
-		}
+		cmdList.readIfExhausted()
 
 		n, err := c.reader.Read(msg)
 		if err != nil {
@@ -73,7 +66,8 @@ func (c *conn) recvCommands() {
 
 			c.responseReader.readData(tmpData[:size])
 
-			current := cmdList[cmdListOffset]
+			current := cmdList.current()
+
 			if responseCount == 0 {
 				current.data = current.data[:0]
 			}
@@ -84,7 +78,8 @@ func (c *conn) recvCommands() {
 				continue
 			}
 
-			cmdListOffset++
+			cmdList.next()
+
 			responseCount = 0
 
 			current.mut.Lock()
@@ -95,4 +90,36 @@ func (c *conn) recvCommands() {
 			break
 		}
 	}
+}
+
+type cmdListReader struct {
+	sender *sender
+
+	cmdList []*commandData
+	length  int
+	offset  int
+}
+
+func newCmdListReader(sender *sender) *cmdListReader {
+	return &cmdListReader{
+		sender:  sender,
+		cmdList: make([]*commandData, 128),
+		length:  0,
+		offset:  0,
+	}
+}
+
+func (c *cmdListReader) readIfExhausted() {
+	if c.offset >= c.length {
+		c.length = c.sender.readSentCommands(c.cmdList)
+		c.offset = 0
+	}
+}
+
+func (c *cmdListReader) current() *commandData {
+	return c.cmdList[c.offset]
+}
+
+func (c *cmdListReader) next() {
+	c.offset++
 }
