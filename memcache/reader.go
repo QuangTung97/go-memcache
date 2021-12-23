@@ -8,6 +8,8 @@ type responseReader struct {
 
 	lastPos    uint64
 	waitForEnd uint64
+
+	lastErr error
 }
 
 func newResponseReader(sizeLog int) *responseReader {
@@ -42,20 +44,23 @@ func (r *responseReader) getIndex(pos uint64) uint64 {
 	return pos & r.dataMask
 }
 
-func (r *responseReader) findFirstNumberPos(start uint64, end uint64) uint64 {
+func (r *responseReader) findFirstNumberPos(start uint64, end uint64) (uint64, error) {
 	for pos := start; pos < end; pos++ {
 		i := r.getIndex(pos)
 		if r.data[i] >= '0' && r.data[i] <= '9' {
-			return pos
+			return pos, nil
 		}
 	}
-	return end
+	return end, ErrBrokenPipe{reason: "not a number after VA"}
 }
 
-func (r *responseReader) parseIntFrom(start uint64, end uint64) uint64 {
+func (r *responseReader) parseIntFrom(start uint64, end uint64) (uint64, error) {
 	result := uint64(0)
 
-	start = r.findFirstNumberPos(start, end)
+	start, err := r.findFirstNumberPos(start, end)
+	if err != nil {
+		return 0, err
+	}
 	for pos := start; pos < end; pos++ {
 		i := r.getIndex(pos)
 		if r.data[i] < '0' || r.data[i] > '9' {
@@ -66,7 +71,7 @@ func (r *responseReader) parseIntFrom(start uint64, end uint64) uint64 {
 		result += num
 	}
 
-	return result
+	return result, nil
 }
 
 func (r *responseReader) isCRLF(pos uint64) bool {
@@ -98,7 +103,11 @@ func (r *responseReader) getNext() (int, bool) {
 
 		r.lastPos = pos + 2
 		if r.isVA(r.begin) {
-			dataLen := r.parseIntFrom(r.begin+2, pos)
+			dataLen, err := r.parseIntFrom(r.begin+2, pos)
+			if err != nil {
+				r.lastErr = err
+				return 0, false
+			}
 			r.waitForEnd = r.lastPos + dataLen + 2
 			return r.returnIfHasFullResponseData()
 		}
@@ -121,4 +130,8 @@ func (r *responseReader) readData(data []byte) {
 		copy(data[firstPart:], r.data)
 	}
 	r.begin = r.lastPos
+}
+
+func (r *responseReader) hasError() error {
+	return r.lastErr
 }

@@ -35,6 +35,6 @@ func New(addr string, numConns int) (*Client, error) {
 }
 
 // Set ...
-func (c *Client) Set(ctx context.Context, key string, value []byte) error {
+func (c *Client) Set(_ context.Context, _ string, _ []byte) error {
 	return nil
 }

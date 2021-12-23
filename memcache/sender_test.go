@@ -80,6 +80,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 	}, result)
 }
 
+//revive:disable:cognitive-complexity
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(NoopFlusher(&buf), 2)
@@ -143,3 +144,5 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 
 	wg.Wait()
 }
+
+//revive:enable:cognitive-complexity

@@ -139,3 +139,14 @@ func TestResponseReader_With_Value_Return(t *testing.T) {
 	r.readData(data)
 	assert.Equal(t, []byte(expected), data)
 }
+
+func TestResponseReader_With_VA_Error(t *testing.T) {
+	r := newResponseReader(10)
+
+	r.recv([]byte("VA xby\r\n"))
+
+	size, ok := r.getNext()
+	assert.Equal(t, false, ok)
+	assert.Equal(t, 0, size)
+	assert.Equal(t, ErrBrokenPipe{reason: "not a number after VA"}, r.hasError())
+}

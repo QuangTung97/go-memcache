@@ -5,25 +5,13 @@ import (
 	"testing"
 )
 
-func TestSendBuffer(t *testing.T) {
-	b := newSendBuffer(10)
+func TestConn_Simple_Get_Miss(t *testing.T) {
+	c, err := newConn("localhost:11211")
+	assert.Equal(t, nil, err)
 
-	cmd1 := &commandData{}
-	cmd2 := &commandData{}
-	cmd3 := &commandData{}
-	cmd4 := &commandData{}
-	cmd5 := &commandData{}
+	cmd1 := newCommandFromString("mg key01 v\r\n")
+	c.pushCommand(cmd1)
+	cmd1.wait()
 
-	b.push(cmd1)
-	b.push(cmd2)
-	b.push(cmd3)
-	b.push(cmd4)
-	b.push(cmd5)
-
-	b.clearRemain(3)
-
-	assert.Equal(t, []*commandData{
-		cmd4, cmd5,
-	}, b.buf)
-	assert.Equal(t, 10, cap(b.buf))
+	assert.Equal(t, "EN\r\n", string(cmd1.data))
 }

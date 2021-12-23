@@ -39,6 +39,14 @@ func newCommand() *commandData {
 	return c
 }
 
+func (c *commandData) wait() {
+	c.mut.Lock()
+	for !c.completed {
+		c.cond.Wait()
+	}
+	c.mut.Unlock()
+}
+
 type sender struct {
 	writer    FlushWriter
 	writerMut sync.Mutex
@@ -174,7 +182,7 @@ func (s *sender) sendToWriter() {
 	s.writerMut.Unlock()
 }
 
-func (s *sender) publish(cmd ...*commandData) {
+func (s *sender) publish(cmd *commandData) {
 	var prevLen int
 
 	s.sendBufMut.Lock()
@@ -183,7 +191,7 @@ func (s *sender) publish(cmd ...*commandData) {
 	}
 
 	prevLen = len(s.sendBuf)
-	s.sendBuf = append(s.sendBuf, cmd...)
+	s.sendBuf = append(s.sendBuf, cmd)
 	s.sendBufMut.Unlock()
 
 	if prevLen > 0 {
