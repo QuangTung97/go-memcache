@@ -80,17 +80,19 @@ func (c *conn) recvCommands() {
 			current.data = append(current.data, tmpData[:size]...) // need optimize??
 			responseCount++
 
-			if responseCount == current.cmdCount {
-				cmdListOffset++
-				responseCount = 0
-
-				current.mut.Lock()
-				current.completed = true
-				current.mut.Unlock()
-				current.cond.Signal()
-
-				break
+			if responseCount < current.cmdCount {
+				continue
 			}
+
+			cmdListOffset++
+			responseCount = 0
+
+			current.mut.Lock()
+			current.completed = true
+			current.mut.Unlock()
+			current.cond.Signal()
+
+			break
 		}
 	}
 }
