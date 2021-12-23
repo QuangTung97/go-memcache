@@ -25,8 +25,10 @@ type sender struct {
 	writerMut sync.Mutex
 	tmpBuf    []*commandData
 
-	sendBuf    []*commandData
-	sendBufMut sync.Mutex
+	sendBuf      []*commandData
+	sendBufMax   int
+	sendBufMut   sync.Mutex
+	sendFullCond *sync.Cond
 
 	recv *recvBuffer
 }
@@ -56,24 +58,32 @@ func newRecvBuffer(sizeLog int) *recvBuffer {
 }
 
 func (b *recvBuffer) push(cmdList []*commandData) {
-	b.mut.Lock()
-	n := uint64(len(cmdList))
 	max := uint64(len(b.buf))
 
-	// Wait until: begin + max - end >= len(cmdList)
-	for b.begin+max < b.end+n {
-		b.sendCond.Wait()
+	for len(cmdList) > 0 {
+		b.mut.Lock()
+
+		// Wait until: begin + max - end > 0
+		for b.begin+max <= b.end {
+			b.sendCond.Wait()
+		}
+
+		n := uint64(len(cmdList))
+		if b.begin+max < b.end+n {
+			n = b.begin + max - b.end
+		}
+
+		for i, cmd := range cmdList[:n] {
+			index := (b.end + uint64(i)) & b.mask
+			b.buf[index] = cmd
+		}
+		b.end += n
+
+		b.mut.Unlock()
+		b.recvCond.Signal()
+
+		cmdList = cmdList[n:]
 	}
-
-	for i, cmd := range cmdList {
-		index := (b.end + uint64(i)) & b.mask
-		b.buf[index] = cmd
-	}
-	b.end += n
-
-	b.mut.Unlock()
-
-	b.recvCond.Signal()
 }
 
 func (b *recvBuffer) read(cmdList []*commandData) int {
@@ -94,18 +104,21 @@ func (b *recvBuffer) read(cmdList []*commandData) int {
 	b.begin += n
 
 	b.mut.Unlock()
-
 	b.sendCond.Signal()
 
 	return int(n)
 }
 
-func newSender(writer io.Writer) *sender {
-	return &sender{
-		writer:  writer,
-		sendBuf: make([]*commandData, 0, 128),
-		recv:    newRecvBuffer(7), // 128
+func newSender(writer io.Writer, bufSizeLog int) *sender {
+	maxSize := 1 << bufSizeLog
+	s := &sender{
+		writer:     writer,
+		sendBuf:    make([]*commandData, 0, maxSize),
+		sendBufMax: maxSize,
+		recv:       newRecvBuffer(bufSizeLog),
 	}
+	s.sendFullCond = sync.NewCond(&s.sendBufMut)
+	return s
 }
 
 func clearCmdList(cmdList []*commandData) []*commandData {
@@ -123,6 +136,8 @@ func (s *sender) sendToWriter() {
 	s.sendBuf = clearCmdList(s.sendBuf)
 	s.sendBufMut.Unlock()
 
+	s.sendFullCond.Signal()
+
 	for _, cmd := range s.tmpBuf {
 		_, err := s.writer.Write(cmd.data)
 		if err != nil {
@@ -136,12 +151,16 @@ func (s *sender) sendToWriter() {
 	s.writerMut.Unlock()
 }
 
-func (s *sender) publish(cmd *commandData) {
+func (s *sender) publish(cmd ...*commandData) {
 	var prevLen int
 
 	s.sendBufMut.Lock()
+	for len(s.sendBuf) >= s.sendBufMax {
+		s.sendFullCond.Wait()
+	}
+
 	prevLen = len(s.sendBuf)
-	s.sendBuf = append(s.sendBuf, cmd)
+	s.sendBuf = append(s.sendBuf, cmd...)
 	s.sendBufMut.Unlock()
 
 	if prevLen > 0 {
