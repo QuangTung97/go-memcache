@@ -67,16 +67,23 @@ func (c *commandData) setCompleted(err error) {
 }
 
 type sender struct {
-	nc          netConn
-	ncMut       sync.Mutex
-	tmpBuf      []*commandData
+	//---- protected by ncMut ------
+	nc     netConn
+	ncMut  sync.Mutex
+	tmpBuf []*commandData
+
+	newNetConn bool // right after use resetNetConn
+
 	lastErr     error
 	ncErrorCond *sync.Cond
+	//---- end ncMut protection ----
 
+	//---- protected by sendBufMut -----
 	sendBuf      []*commandData
 	sendBufMax   int
 	sendBufMut   sync.Mutex
 	sendFullCond *sync.Cond
+	//---- end sendBufMut protection ---
 
 	recv *recvBuffer
 }
@@ -215,6 +222,11 @@ func (s *sender) writeAndFlush() error {
 
 	for _, cmd := range s.tmpBuf {
 		cmd.reader = s.nc.reader
+		if s.newNetConn {
+			s.newNetConn = false
+			cmd.resetReader = true
+		}
+
 		_, err := s.nc.writer.Write(cmd.data)
 		if err != nil {
 			s.setLastErrorAndClose(err)
@@ -285,10 +297,17 @@ func (s *sender) waitForError() {
 	s.ncMut.Unlock()
 }
 
-func (s *sender) resetNetConn(nc netConn, err error) {
+func (s *sender) setNetConnError(err error) {
+	s.ncMut.Lock()
+	s.lastErr = err
+	s.ncMut.Unlock()
+}
+
+func (s *sender) resetNetConn(nc netConn) {
 	s.ncMut.Lock()
 	s.nc = nc
-	s.lastErr = err
+	s.lastErr = nil
+	s.newNetConn = true
 	s.ncMut.Unlock()
 }
 

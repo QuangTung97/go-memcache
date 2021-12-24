@@ -231,6 +231,9 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 	assert.Equal(t, errors.New("some error"), cmd1.lastErr)
 	assert.Equal(t, errors.New("some error"), cmd2.lastErr)
 
+	assert.Equal(t, false, cmd1.resetReader)
+	assert.Equal(t, false, cmd1.resetReader)
+
 	s.waitForError()
 }
 
@@ -250,9 +253,11 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
 	s.publish(cmd1)
+	cmd1.waitCompleted()
+	assert.Equal(t, false, cmd1.resetReader)
 
 	s.waitForError()
-	s.resetNetConn(netConn{writer: writer2, reader: reader2, closer: closer}, nil)
+	s.resetNetConn(netConn{writer: writer2, reader: reader2, closer: closer})
 
 	writer2.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil
@@ -267,4 +272,5 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	assert.Equal(t, 1, n)
 	assert.Equal(t, []byte("mg key02 v\r\n"), cmdList[0].data)
 	assert.Same(t, reader2, cmdList[0].reader)
+	assert.Equal(t, true, cmdList[0].resetReader)
 }

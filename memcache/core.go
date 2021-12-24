@@ -54,6 +54,14 @@ func (c *coreConnection) publish(cmd *commandData) {
 	c.sender.publish(cmd)
 }
 
+func (c *coreConnection) resetNetConn(nc netConn) {
+	c.sender.resetNetConn(nc)
+}
+
+func (c *coreConnection) waitForError() {
+	c.sender.waitForError()
+}
+
 func (c *coreConnection) recvCommands() {
 	defer c.wg.Done()
 
@@ -64,6 +72,7 @@ func (c *coreConnection) recvCommands() {
 		}
 		if err != nil {
 			_ = c.cmdList.current().reader.Close()
+			c.sender.setNetConnError(err)
 		}
 		c.cmdList.current().setCompleted(err)
 		c.cmdList.next()
