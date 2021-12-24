@@ -13,7 +13,7 @@ type ErrBrokenPipe struct {
 var _ error = ErrBrokenPipe{}
 
 // ErrConnClosed ...
-var ErrConnClosed = errors.New("connection closed")
+var ErrConnClosed = errors.New("memcache: connection closed")
 
 func (e ErrBrokenPipe) Error() string {
 	return fmt.Sprintf("broken pipe: %s", e.reason)

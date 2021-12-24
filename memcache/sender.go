@@ -11,6 +11,11 @@ type FlushWriter interface {
 	Flush() error
 }
 
+type closerInterface = io.Closer
+type readCloserInterface = io.ReadCloser
+
+//go:generate moq -out sender_mocks_test.go . FlushWriter closerInterface readCloserInterface
+
 type noopFlusher struct {
 	io.Writer
 }
@@ -44,7 +49,7 @@ func newCommand() *commandData {
 	return c
 }
 
-func (c *commandData) wait() {
+func (c *commandData) waitCompleted() {
 	c.mut.Lock()
 	for !c.completed {
 		c.cond.Wait()
@@ -186,6 +191,10 @@ func (s *sender) replyErrorToCmdInTmpBuf(err error) {
 		cmd.setCompleted(err)
 	}
 	s.tmpBuf = clearCmdList(s.tmpBuf)
+}
+
+func (s *sender) setLastErrorAndClose(err error) {
+	s.lastErr = err
 	_ = s.nc.closer.Close()
 }
 
@@ -198,14 +207,14 @@ func (s *sender) writeAndFlush() error {
 		cmd.reader = s.nc.reader
 		_, err := s.nc.writer.Write(cmd.data)
 		if err != nil {
-			s.lastErr = err
+			s.setLastErrorAndClose(err)
 			return err
 		}
 	}
 
 	err := s.nc.writer.Flush()
 	if err != nil {
-		s.lastErr = err
+		s.setLastErrorAndClose(err)
 		return err
 	}
 
@@ -260,7 +269,7 @@ func (s *sender) readSentCommands(cmdList []*commandData) int {
 
 func (s *sender) waitForError() {
 	s.ncMut.Lock()
-	for s.lastErr != nil {
+	for s.lastErr == nil {
 		s.ncErrorCond.Wait()
 	}
 	s.ncMut.Unlock()
@@ -271,4 +280,12 @@ func (s *sender) resetNetConn(nc netConn, err error) {
 	s.nc = nc
 	s.lastErr = err
 	s.ncMut.Unlock()
+}
+
+func (s *sender) closeNetConn() error {
+	s.ncMut.Lock()
+	err := s.nc.closer.Close()
+	s.lastErr = ErrConnClosed
+	s.ncMut.Unlock()
+	return err
 }

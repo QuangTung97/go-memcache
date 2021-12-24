@@ -2,10 +2,12 @@ package memcache
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -154,3 +156,115 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 }
 
 //revive:enable:cognitive-complexity
+
+func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
+	var buf bytes.Buffer
+	s := newSender(newNetConnForTest(&buf), 8)
+
+	var ended uint32
+	go func() {
+		s.waitForError()
+		atomic.StoreUint32(&ended, 1)
+	}()
+
+	time.Sleep(5 * time.Millisecond)
+	assert.Equal(t, uint32(0), atomic.LoadUint32(&ended))
+}
+
+func TestSender_Publish_Write_Error(t *testing.T) {
+	writer := &FlushWriterMock{}
+	closer := &closerInterfaceMock{}
+	s := newSender(netConn{writer: writer, closer: closer}, 8)
+
+	writer.WriteFunc = func(p []byte) (int, error) {
+		return 0, errors.New("some error")
+	}
+	closer.CloseFunc = func() error {
+		return nil
+	}
+
+	cmd1 := newCommandFromString("mg key01 v\r\n")
+	cmd2 := newCommandFromString("mg key02 v\r\n")
+
+	s.publish(cmd1)
+	s.publish(cmd2)
+
+	assert.Equal(t, 1, len(writer.WriteCalls()))
+	assert.Equal(t, 1, len(closer.CloseCalls()))
+
+	cmd1.waitCompleted()
+	cmd2.waitCompleted()
+
+	assert.Equal(t, errors.New("some error"), cmd1.lastErr)
+	assert.Equal(t, errors.New("some error"), cmd2.lastErr)
+
+	s.waitForError()
+}
+
+func TestSender_Publish_Flush_Error(t *testing.T) {
+	writer := &FlushWriterMock{}
+	closer := &closerInterfaceMock{}
+	s := newSender(netConn{writer: writer, closer: closer}, 8)
+
+	writer.WriteFunc = func(p []byte) (int, error) {
+		return len(p), nil
+	}
+	writer.FlushFunc = func() error {
+		return errors.New("some error")
+	}
+	closer.CloseFunc = func() error {
+		return nil
+	}
+
+	cmd1 := newCommandFromString("mg key01 v\r\n")
+	cmd2 := newCommandFromString("mg key02 v\r\n")
+
+	s.publish(cmd1)
+	s.publish(cmd2)
+
+	assert.Equal(t, 1, len(writer.WriteCalls()))
+	assert.Equal(t, 1, len(closer.CloseCalls()))
+
+	cmd1.waitCompleted()
+	cmd2.waitCompleted()
+
+	assert.Equal(t, errors.New("some error"), cmd1.lastErr)
+	assert.Equal(t, errors.New("some error"), cmd2.lastErr)
+
+	s.waitForError()
+}
+
+func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
+	writer1 := &FlushWriterMock{}
+	writer2 := &FlushWriterMock{}
+
+	reader2 := &readCloserInterfaceMock{}
+
+	closer := &closerInterfaceMock{}
+	s := newSender(netConn{writer: writer1, closer: closer}, 8)
+
+	writer1.WriteFunc = func(p []byte) (int, error) {
+		return 0, errors.New("some error")
+	}
+	closer.CloseFunc = func() error { return nil }
+
+	cmd1 := newCommandFromString("mg key01 v\r\n")
+	s.publish(cmd1)
+
+	s.waitForError()
+	s.resetNetConn(netConn{writer: writer2, reader: reader2, closer: closer}, nil)
+
+	writer2.WriteFunc = func(p []byte) (int, error) {
+		return len(p), nil
+	}
+	writer2.FlushFunc = func() error { return nil }
+
+	cmd2 := newCommandFromString("mg key02 v\r\n")
+	s.publish(cmd2)
+
+	cmdList := make([]*commandData, 10)
+	n := s.readSentCommands(cmdList)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, []byte("mg key02 v\r\n"), cmdList[0].data)
+	assert.Same(t, reader2, cmdList[0].reader)
+}

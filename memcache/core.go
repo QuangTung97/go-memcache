@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -14,17 +15,30 @@ type coreConnection struct {
 
 	shuttingDown uint32 // boolean
 	wg           sync.WaitGroup
+
+	// job data
+	tmpData []byte
+	msgData []byte
+	cmdList *cmdListReader
 }
 
 func newCoreConnection(nc netConn) *coreConnection {
+	cmdSender := newSender(nc, 10)
+
 	c := &coreConnection{
 		responseReader: newResponseReader(21),
-		sender:         newSender(nc, 10),
+		sender:         cmdSender,
 
 		shuttingDown: 0,
+
+		tmpData: make([]byte, 1<<21),
+		msgData: make([]byte, 2048),
+		cmdList: newCmdListReader(cmdSender),
 	}
+
 	c.wg.Add(1)
 	go c.recvCommands()
+
 	return c
 }
 
@@ -45,57 +59,62 @@ func (c *coreConnection) recvCommands() {
 	defer c.wg.Done()
 
 	for !c.isShuttingDown() {
-		_ = c.recvCommandsSingleLoop()
+		err := c.recvSingleCommand()
+		if err != nil {
+			fmt.Println("ERROR:", err)
+			_ = c.cmdList.current().reader.Close()
+		}
+		c.cmdList.current().setCompleted(err)
+		c.cmdList.next()
 	}
 }
 
 //revive:disable:cognitive-complexity
-func (c *coreConnection) recvCommandsSingleLoop() error {
-	tmpData := make([]byte, 1<<21)
-	msg := make([]byte, 2048)
-	cmdList := newCmdListReader(c.sender)
-
+func (c *coreConnection) recvSingleCommand() error {
 	responseCount := 0
 
+ReadData:
 	for {
-		cmdList.readIfExhausted()
+		fmt.Println("LOOP BEGIN")
 
-		current := cmdList.current()
+		c.cmdList.readIfExhausted()
+		current := c.cmdList.current()
 
-		n, err := current.reader.Read(msg)
+		n, err := current.reader.Read(c.msgData)
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("LOOP END")
 
 		if current.resetReader {
 			current.resetReader = false
 			c.responseReader.reset()
 		}
-		c.responseReader.recv(msg[:n])
+
+		c.responseReader.recv(c.msgData[:n])
 
 		for {
 			size, ok := c.responseReader.getNext()
 			if !ok {
-				break
+				continue ReadData
+			}
+			if c.responseReader.hasError() != nil {
+				return c.responseReader.hasError()
 			}
 
-			c.responseReader.readData(tmpData[:size])
+			c.responseReader.readData(c.tmpData[:size])
 
 			if responseCount == 0 {
-				current.data = current.data[:0]
+				current.data = current.data[:0] // clear command data
 			}
-			current.data = append(current.data, tmpData[:size]...) // need optimize??
+			current.data = append(current.data, c.tmpData[:size]...) // need optimize??
 			responseCount++
 
 			if responseCount < current.cmdCount {
 				continue
 			}
-
-			cmdList.next()
-			responseCount = 0
-			current.setCompleted(nil)
-
-			break
+			return nil
 		}
 	}
 }

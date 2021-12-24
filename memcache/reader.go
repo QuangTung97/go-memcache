@@ -136,5 +136,5 @@ func (r *responseReader) hasError() error {
 	return r.lastErr
 }
 
-func (r *responseReader) reset() {
+func (r *responseReader) reset() { // TODO
 }
