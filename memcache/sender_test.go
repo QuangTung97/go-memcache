@@ -17,9 +17,17 @@ func newCommandFromString(s string) *commandData {
 	return cmd
 }
 
+func newNetConnForTest(buf *bytes.Buffer) netConn {
+	return netConn{
+		writer: NoopFlusher(buf),
+		reader: nil,
+		closer: nil,
+	}
+}
+
 func TestSender_Publish(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(NoopFlusher(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8)
 
 	_ = s.publish(newCommandFromString("mg key01 v\r\n"))
 	_ = s.publish(newCommandFromString("mg key02 v k\r\n"))
@@ -35,9 +43,9 @@ func TestSender_Publish(t *testing.T) {
 
 func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(NoopFlusher(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8)
 
-	s.writerMut.Lock()
+	s.ncMut.Lock()
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -61,7 +69,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	s.writerMut.Unlock()
+	s.ncMut.Unlock()
 	wg.Wait()
 
 	cmdList := make([]*commandData, 10)
@@ -83,7 +91,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 //revive:disable:cognitive-complexity
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(NoopFlusher(&buf), 2)
+	s := newSender(newNetConnForTest(&buf), 2)
 	assert.Equal(t, 4, s.sendBufMax)
 
 	const numRounds = 200000

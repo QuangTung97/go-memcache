@@ -1,6 +1,9 @@
 package memcache
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrBrokenPipe ...
 type ErrBrokenPipe struct {
@@ -8,6 +11,9 @@ type ErrBrokenPipe struct {
 }
 
 var _ error = ErrBrokenPipe{}
+
+// ErrConnClosed ...
+var ErrConnClosed = errors.New("connection closed")
 
 func (e ErrBrokenPipe) Error() string {
 	return fmt.Sprintf("broken pipe: %s", e.reason)

@@ -1,17 +1,10 @@
 package memcache
 
 import (
-	"io"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 )
-
-type netConn struct {
-	reader  io.ReadCloser
-	writer  FlushWriter
-	lastErr error
-}
 
 type coreConnection struct {
 	nc unsafe.Pointer // point to netConn
@@ -23,16 +16,10 @@ type coreConnection struct {
 	wg           sync.WaitGroup
 }
 
-func newCoreConnection(reader io.ReadCloser, writer FlushWriter) *coreConnection {
+func newCoreConnection(nc netConn) *coreConnection {
 	c := &coreConnection{
-		nc: unsafe.Pointer(&netConn{
-			reader:  reader,
-			writer:  writer,
-			lastErr: nil,
-		}),
-
 		responseReader: newResponseReader(21),
-		sender:         newSender(writer, 10),
+		sender:         newSender(nc, 10),
 
 		shuttingDown: 0,
 	}
@@ -58,13 +45,12 @@ func (c *coreConnection) recvCommands() {
 	defer c.wg.Done()
 
 	for !c.isShuttingDown() {
-		nc := (*netConn)(atomic.LoadPointer(&c.nc))
-		err := c.recvCommandsForReader(nc.reader)
-		nc.lastErr = err
+		_ = c.recvCommandsSingleLoop()
 	}
 }
 
-func (c *coreConnection) recvCommandsForReader(reader io.ReadCloser) error {
+//revive:disable:cognitive-complexity
+func (c *coreConnection) recvCommandsSingleLoop() error {
 	tmpData := make([]byte, 1<<21)
 	msg := make([]byte, 2048)
 	cmdList := newCmdListReader(c.sender)
@@ -74,11 +60,17 @@ func (c *coreConnection) recvCommandsForReader(reader io.ReadCloser) error {
 	for {
 		cmdList.readIfExhausted()
 
-		n, err := reader.Read(msg)
+		current := cmdList.current()
+
+		n, err := current.reader.Read(msg)
 		if err != nil {
 			return err
 		}
 
+		if current.resetReader {
+			current.resetReader = false
+			c.responseReader.reset()
+		}
 		c.responseReader.recv(msg[:n])
 
 		for {
@@ -88,8 +80,6 @@ func (c *coreConnection) recvCommandsForReader(reader io.ReadCloser) error {
 			}
 
 			c.responseReader.readData(tmpData[:size])
-
-			current := cmdList.current()
 
 			if responseCount == 0 {
 				current.data = current.data[:0]
@@ -114,6 +104,8 @@ func (c *coreConnection) recvCommandsForReader(reader io.ReadCloser) error {
 		}
 	}
 }
+
+//revive:enable:cognitive-complexity
 
 type cmdListReader struct {
 	sender *sender

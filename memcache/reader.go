@@ -135,3 +135,6 @@ func (r *responseReader) readData(data []byte) {
 func (r *responseReader) hasError() error {
 	return r.lastErr
 }
+
+func (r *responseReader) reset() {
+}

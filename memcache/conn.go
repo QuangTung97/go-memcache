@@ -18,8 +18,12 @@ func newConn(addr string) (*conn, error) {
 
 	writer := bufio.NewWriter(nc)
 	return &conn{
-		nc:   nc,
-		core: newCoreConnection(nc, writer),
+		nc: nc,
+		core: newCoreConnection(netConn{
+			reader: nc,
+			writer: writer,
+			closer: nc,
+		}),
 	}, nil
 }
 

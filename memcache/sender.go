@@ -29,6 +29,11 @@ type commandData struct {
 	data      []byte // for request and response data
 	completed bool
 
+	resetReader bool
+	reader      io.ReadCloser
+
+	lastErr error
+
 	mut  sync.Mutex
 	cond *sync.Cond
 }
@@ -47,10 +52,21 @@ func (c *commandData) wait() {
 	c.mut.Unlock()
 }
 
+func (c *commandData) setCompleted(err error) {
+	c.mut.Lock()
+	c.completed = true
+	c.lastErr = err
+	c.mut.Unlock()
+
+	c.cond.Signal()
+}
+
 type sender struct {
-	writer    FlushWriter
-	writerMut sync.Mutex
-	tmpBuf    []*commandData
+	nc          netConn
+	ncMut       sync.Mutex
+	tmpBuf      []*commandData
+	lastErr     error
+	ncErrorCond *sync.Cond
 
 	sendBuf      []*commandData
 	sendBufMax   int
@@ -136,14 +152,24 @@ func (b *recvBuffer) read(cmdList []*commandData) int {
 	return int(n)
 }
 
-func newSender(writer FlushWriter, bufSizeLog int) *sender {
+type netConn struct {
+	writer FlushWriter
+	closer io.Closer
+	reader io.ReadCloser
+}
+
+func newSender(nc netConn, bufSizeLog int) *sender {
 	maxSize := 1 << bufSizeLog
 	s := &sender{
-		writer:     writer,
+		nc:      nc,
+		lastErr: nil,
+
 		sendBuf:    make([]*commandData, 0, maxSize),
 		sendBufMax: maxSize,
-		recv:       newRecvBuffer(bufSizeLog),
+
+		recv: newRecvBuffer(bufSizeLog),
 	}
+	s.ncErrorCond = sync.NewCond(&s.ncMut)
 	s.sendFullCond = sync.NewCond(&s.sendBufMut)
 	return s
 }
@@ -155,8 +181,39 @@ func clearCmdList(cmdList []*commandData) []*commandData {
 	return cmdList[:0]
 }
 
+func (s *sender) replyErrorToCmdInTmpBuf(err error) {
+	for _, cmd := range s.tmpBuf {
+		cmd.setCompleted(err)
+	}
+	s.tmpBuf = clearCmdList(s.tmpBuf)
+	_ = s.nc.closer.Close()
+}
+
+func (s *sender) writeAndFlush() error {
+	if s.lastErr != nil {
+		return s.lastErr
+	}
+
+	for _, cmd := range s.tmpBuf {
+		cmd.reader = s.nc.reader
+		_, err := s.nc.writer.Write(cmd.data)
+		if err != nil {
+			s.lastErr = err
+			return err
+		}
+	}
+
+	err := s.nc.writer.Flush()
+	if err != nil {
+		s.lastErr = err
+		return err
+	}
+
+	return nil
+}
+
 func (s *sender) sendToWriter() error {
-	s.writerMut.Lock()
+	s.ncMut.Lock()
 
 	s.sendBufMut.Lock()
 	s.tmpBuf = append(s.tmpBuf, s.sendBuf...)
@@ -165,23 +222,17 @@ func (s *sender) sendToWriter() error {
 
 	s.sendFullCond.Signal()
 
-	for _, cmd := range s.tmpBuf {
-		_, err := s.writer.Write(cmd.data)
-		if err != nil {
-			s.writerMut.Unlock()
-			return err
-		}
-	}
-	err := s.writer.Flush()
+	err := s.writeAndFlush()
 	if err != nil {
-		s.writerMut.Unlock()
+		s.replyErrorToCmdInTmpBuf(err)
+		s.ncMut.Unlock()
 		return err
 	}
 
 	s.recv.push(s.tmpBuf)
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 
-	s.writerMut.Unlock()
+	s.ncMut.Unlock()
 	return nil
 }
 
@@ -206,4 +257,19 @@ func (s *sender) publish(cmd *commandData) error {
 
 func (s *sender) readSentCommands(cmdList []*commandData) int {
 	return s.recv.read(cmdList)
+}
+
+func (s *sender) waitForError() {
+	s.ncMut.Lock()
+	for s.lastErr != nil {
+		s.ncErrorCond.Wait()
+	}
+	s.ncMut.Unlock()
+}
+
+func (s *sender) resetNetConn(nc netConn, err error) {
+	s.ncMut.Lock()
+	s.nc = nc
+	s.lastErr = err
+	s.ncMut.Unlock()
 }
