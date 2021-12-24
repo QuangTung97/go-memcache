@@ -155,7 +155,7 @@ func clearCmdList(cmdList []*commandData) []*commandData {
 	return cmdList[:0]
 }
 
-func (s *sender) sendToWriter() {
+func (s *sender) sendToWriter() error {
 	s.writerMut.Lock()
 
 	s.sendBufMut.Lock()
@@ -168,21 +168,24 @@ func (s *sender) sendToWriter() {
 	for _, cmd := range s.tmpBuf {
 		_, err := s.writer.Write(cmd.data)
 		if err != nil {
-			panic(err)
+			s.writerMut.Unlock()
+			return err
 		}
 	}
 	err := s.writer.Flush()
 	if err != nil {
-		panic(err)
+		s.writerMut.Unlock()
+		return err
 	}
 
 	s.recv.push(s.tmpBuf)
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 
 	s.writerMut.Unlock()
+	return nil
 }
 
-func (s *sender) publish(cmd *commandData) {
+func (s *sender) publish(cmd *commandData) error {
 	var prevLen int
 
 	s.sendBufMut.Lock()
@@ -195,10 +198,10 @@ func (s *sender) publish(cmd *commandData) {
 	s.sendBufMut.Unlock()
 
 	if prevLen > 0 {
-		return
+		return nil
 	}
 
-	s.sendToWriter()
+	return s.sendToWriter()
 }
 
 func (s *sender) readSentCommands(cmdList []*commandData) int {
