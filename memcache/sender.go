@@ -89,6 +89,8 @@ type recvBuffer struct {
 	begin uint64
 	end   uint64
 
+	closed bool
+
 	sendCond *sync.Cond
 	recvCond *sync.Cond
 }
@@ -136,7 +138,7 @@ func (b *recvBuffer) push(cmdList []*commandData) {
 
 func (b *recvBuffer) read(cmdList []*commandData) int {
 	b.mut.Lock()
-	for b.end == b.begin {
+	for !b.closed && b.end == b.begin {
 		b.recvCond.Wait()
 	}
 
@@ -155,6 +157,14 @@ func (b *recvBuffer) read(cmdList []*commandData) int {
 	b.sendCond.Signal()
 
 	return int(n)
+}
+
+func (b *recvBuffer) closeBuffer() {
+	b.mut.Lock()
+	b.closed = true
+	b.mut.Unlock()
+
+	b.recvCond.Signal()
 }
 
 type netConn struct {
@@ -284,8 +294,12 @@ func (s *sender) resetNetConn(nc netConn, err error) {
 
 func (s *sender) closeNetConn() error {
 	s.ncMut.Lock()
+
+	s.recv.closeBuffer()
 	err := s.nc.closer.Close()
 	s.lastErr = ErrConnClosed
+
 	s.ncMut.Unlock()
+
 	return err
 }

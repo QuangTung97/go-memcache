@@ -1,7 +1,6 @@
 package memcache
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -60,8 +59,10 @@ func (c *coreConnection) recvCommands() {
 
 	for !c.isShuttingDown() {
 		err := c.recvSingleCommand()
+		if err == ErrConnClosed { // cmd len == 0
+			return
+		}
 		if err != nil {
-			fmt.Println("ERROR:", err)
 			_ = c.cmdList.current().reader.Close()
 		}
 		c.cmdList.current().setCompleted(err)
@@ -75,17 +76,17 @@ func (c *coreConnection) recvSingleCommand() error {
 
 ReadData:
 	for {
-		fmt.Println("LOOP BEGIN")
+		cmdLen := c.cmdList.readIfExhausted()
+		if cmdLen == 0 {
+			return ErrConnClosed
+		}
 
-		c.cmdList.readIfExhausted()
 		current := c.cmdList.current()
 
 		n, err := current.reader.Read(c.msgData)
 		if err != nil {
 			return err
 		}
-
-		fmt.Println("LOOP END")
 
 		if current.resetReader {
 			current.resetReader = false
@@ -138,11 +139,12 @@ func newCmdListReader(sender *sender) *cmdListReader {
 	}
 }
 
-func (c *cmdListReader) readIfExhausted() {
+func (c *cmdListReader) readIfExhausted() int {
 	if c.offset >= c.length {
 		c.length = c.sender.readSentCommands(c.cmdList)
 		c.offset = 0
 	}
+	return c.length
 }
 
 func (c *cmdListReader) current() *commandData {

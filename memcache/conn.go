@@ -2,7 +2,6 @@ package memcache
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 )
 
@@ -34,7 +33,6 @@ func (c *conn) pushCommand(cmd *commandData) {
 
 func (c *conn) shutdown() error {
 	err := c.core.sender.closeNetConn()
-	fmt.Println("CLOSE CONN:", err)
 	c.core.shutdown()
 	return err
 }
