@@ -212,7 +212,7 @@ func (s *sender) writeAndFlush() error {
 	return nil
 }
 
-func (s *sender) sendToWriter() error {
+func (s *sender) sendToWriter() {
 	s.ncMut.Lock()
 
 	s.sendBufMut.Lock()
@@ -226,17 +226,16 @@ func (s *sender) sendToWriter() error {
 	if err != nil {
 		s.replyErrorToCmdInTmpBuf(err)
 		s.ncMut.Unlock()
-		return err
+		return
 	}
 
 	s.recv.push(s.tmpBuf)
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 
 	s.ncMut.Unlock()
-	return nil
 }
 
-func (s *sender) publish(cmd *commandData) error {
+func (s *sender) publish(cmd *commandData) {
 	var prevLen int
 
 	s.sendBufMut.Lock()
@@ -249,10 +248,10 @@ func (s *sender) publish(cmd *commandData) error {
 	s.sendBufMut.Unlock()
 
 	if prevLen > 0 {
-		return nil
+		return
 	}
 
-	return s.sendToWriter()
+	s.sendToWriter()
 }
 
 func (s *sender) readSentCommands(cmdList []*commandData) int {

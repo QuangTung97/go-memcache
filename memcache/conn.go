@@ -27,6 +27,6 @@ func newConn(addr string) (*conn, error) {
 	}, nil
 }
 
-func (c *conn) pushCommand(cmd *commandData) error {
-	return c.core.publish(cmd)
+func (c *conn) pushCommand(cmd *commandData) {
+	c.core.publish(cmd)
 }

@@ -37,8 +37,8 @@ func (c *coreConnection) shutdown() {
 	c.wg.Wait()
 }
 
-func (c *coreConnection) publish(cmd *commandData) error {
-	return c.sender.publish(cmd)
+func (c *coreConnection) publish(cmd *commandData) {
+	c.sender.publish(cmd)
 }
 
 func (c *coreConnection) recvCommands() {
@@ -92,13 +92,8 @@ func (c *coreConnection) recvCommandsSingleLoop() error {
 			}
 
 			cmdList.next()
-
 			responseCount = 0
-
-			current.mut.Lock()
-			current.completed = true
-			current.mut.Unlock()
-			current.cond.Signal()
+			current.setCompleted(nil)
 
 			break
 		}

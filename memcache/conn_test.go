@@ -11,7 +11,7 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 	assert.Equal(t, nil, err)
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
-	_ = c.pushCommand(cmd1)
+	c.pushCommand(cmd1)
 	cmd1.wait()
 
 	assert.Equal(t, "EN\r\n", string(cmd1.data))
@@ -23,7 +23,7 @@ func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 
 	cmd1 := newCommandFromString("mg key01 v\r\nmg key02 v\r\nmg key03 v\r\n")
 	cmd1.cmdCount = 3
-	_ = c.pushCommand(cmd1)
+	c.pushCommand(cmd1)
 	cmd1.wait()
 
 	assert.Equal(t, "EN\r\nEN\r\nEN\r\n", string(cmd1.data))
@@ -41,7 +41,7 @@ func TestConn_Set_Get(t *testing.T) {
 
 	cmd := newCommandFromString(strings.Join(commands, ""))
 	cmd.cmdCount = 3
-	_ = c.pushCommand(cmd)
+	c.pushCommand(cmd)
 	cmd.wait()
 
 	results := []string{

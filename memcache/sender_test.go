@@ -29,8 +29,8 @@ func TestSender_Publish(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8)
 
-	_ = s.publish(newCommandFromString("mg key01 v\r\n"))
-	_ = s.publish(newCommandFromString("mg key02 v k\r\n"))
+	s.publish(newCommandFromString("mg key01 v\r\n"))
+	s.publish(newCommandFromString("mg key02 v k\r\n"))
 
 	assert.Equal(t, "mg key01 v\r\nmg key02 v k\r\n", buf.String())
 
@@ -52,19 +52,19 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		_ = s.publish(newCommandFromString("mg key01\r\n"))
+		s.publish(newCommandFromString("mg key01\r\n"))
 	}()
 
 	go func() {
 		defer wg.Done()
 
-		_ = s.publish(newCommandFromString("mg key02 v\r\n"))
+		s.publish(newCommandFromString("mg key02 v\r\n"))
 	}()
 
 	go func() {
 		defer wg.Done()
 
-		_ = s.publish(newCommandFromString("mg key03 v\r\n"))
+		s.publish(newCommandFromString("mg key03 v\r\n"))
 	}()
 
 	time.Sleep(10 * time.Millisecond)
@@ -103,7 +103,7 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 
 		for i := 0; i < numRounds; i++ {
 			key := fmt.Sprintf("A:KEY:%09d", i)
-			_ = s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
+			s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
 		}
 	}()
 
@@ -112,7 +112,7 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 
 		for i := 0; i < numRounds; i++ {
 			key := fmt.Sprintf("B:KEY:%09d", i)
-			_ = s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
+			s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
 		}
 	}()
 
