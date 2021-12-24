@@ -150,3 +150,61 @@ func TestResponseReader_With_VA_Error(t *testing.T) {
 	assert.Equal(t, 0, size)
 	assert.Equal(t, ErrBrokenPipe{reason: "not a number after VA"}, r.hasError())
 }
+
+func TestResponseReader_Reset_Simple(t *testing.T) {
+	r := newResponseReader(10)
+
+	r.recv([]byte("VA 5\r\nXX"))
+
+	r.reset()
+	r.recv([]byte("EN\r\n"))
+
+	size, ok := r.getNext()
+	assert.Equal(t, true, ok)
+	assert.Equal(t, len("EN\r\n"), size)
+
+	data := make([]byte, size)
+	r.readData(data)
+	assert.Equal(t, []byte("EN\r\n"), data)
+}
+
+func TestResponseReader_Reset_With_Wait_For_End(t *testing.T) {
+	r := newResponseReader(10)
+
+	r.recv([]byte("VA 5\r\nXX"))
+	_, ok := r.getNext()
+	assert.Equal(t, false, ok)
+	assert.Equal(t, nil, r.hasError())
+
+	r.reset()
+	r.recv([]byte("EN\r\n"))
+
+	size, ok := r.getNext()
+	assert.Equal(t, true, ok)
+	assert.Equal(t, len("EN\r\n"), size)
+
+	data := make([]byte, size)
+	r.readData(data)
+	assert.Equal(t, []byte("EN\r\n"), data)
+}
+
+func TestResponseReader_Reset_With_Error(t *testing.T) {
+	r := newResponseReader(10)
+
+	r.recv([]byte("VA abcd\r\n"))
+	_, ok := r.getNext()
+	assert.Equal(t, false, ok)
+	assert.Error(t, r.hasError())
+
+	r.reset()
+	r.recv([]byte("EN\r\n"))
+
+	size, ok := r.getNext()
+	assert.Equal(t, true, ok)
+	assert.Equal(t, len("EN\r\n"), size)
+	assert.Equal(t, nil, r.hasError())
+
+	data := make([]byte, size)
+	r.readData(data)
+	assert.Equal(t, []byte("EN\r\n"), data)
+}
