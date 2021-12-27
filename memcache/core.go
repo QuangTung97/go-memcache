@@ -110,7 +110,7 @@ ReadData:
 				continue ReadData
 			}
 			if c.responseReader.hasError() != nil {
-				return c.responseReader.hasError()
+				return c.responseReader.hasError() // TODO
 			}
 
 			c.responseReader.readData(c.tmpData[:size])
