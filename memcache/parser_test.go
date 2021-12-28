@@ -170,3 +170,118 @@ func TestParser_Read_MGet(t *testing.T) {
 		})
 	}
 }
+
+func TestParser_Read_MSet(t *testing.T) {
+	table := []struct {
+		name string
+		data string
+		err  error
+		resp msetResponse
+	}{
+		{
+			name: "empty",
+			data: "",
+			err:  errInvalidMSet,
+		},
+		{
+			name: "HD",
+			data: "HD\r\n",
+			resp: msetResponse{
+				responseType: msetResponseTypeHD,
+			},
+		},
+		{
+			name: "NS",
+			data: "NS\r\n",
+			resp: msetResponse{
+				responseType: msetResponseTypeNS,
+			},
+		},
+		{
+			name: "EX",
+			data: "EX\r\n",
+			resp: msetResponse{
+				responseType: msetResponseTypeEX,
+			},
+		},
+		{
+			name: "NF",
+			data: "NF\r\n",
+			resp: msetResponse{
+				responseType: msetResponseTypeNF,
+			},
+		},
+		{
+			name: "HD-missing-lf",
+			data: "HD  \r",
+			err:  errInvalidMSet,
+		},
+		{
+			name: "invalid-prefix",
+			data: "OK  \r",
+			err:  errInvalidMSet,
+		},
+	}
+	for _, e := range table {
+		t.Run(e.name, func(t *testing.T) {
+			p := newParserStr(e.data)
+			resp, err := p.readMSet()
+			assert.Equal(t, e.err, err)
+			assert.Equal(t, e.resp, resp)
+		})
+	}
+}
+
+func TestParser_Read_MDel(t *testing.T) {
+	table := []struct {
+		name string
+		data string
+		err  error
+		resp mdelResponse
+	}{
+		{
+			name: "empty",
+			data: "",
+			err:  errInvalidMDel,
+		},
+		{
+			name: "HD-missing-lf",
+			data: "HD  \r",
+			err:  errInvalidMDel,
+		},
+		{
+			name: "HD",
+			data: "HD\r\n",
+			resp: mdelResponse{
+				responseType: mdelResponseTypeHD,
+			},
+		},
+		{
+			name: "NF",
+			data: "NF\r\n",
+			resp: mdelResponse{
+				responseType: mdelResponseTypeNF,
+			},
+		},
+		{
+			name: "EX",
+			data: "EX\r\n",
+			resp: mdelResponse{
+				responseType: mdelResponseTypeEX,
+			},
+		},
+		{
+			name: "invalid-prefix",
+			data: "OK\r\n",
+			err:  errInvalidMDel,
+		},
+	}
+	for _, e := range table {
+		t.Run(e.name, func(t *testing.T) {
+			p := newParserStr(e.data)
+			resp, err := p.readMDel()
+			assert.Equal(t, e.err, err)
+			assert.Equal(t, e.resp, resp)
+		})
+	}
+}

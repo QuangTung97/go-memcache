@@ -18,7 +18,6 @@ const (
 	mgetResponseTypeVA mgetResponseType = iota + 1
 	mgetResponseTypeHD
 	mgetResponseTypeEN
-	mgetResponseTypeServerError
 )
 
 type parserFlags uint64
@@ -36,7 +35,34 @@ type mgetResponse struct {
 	cas          uint64
 }
 
+type msetResponseType int
+
+const (
+	msetResponseTypeHD msetResponseType = iota + 1 // STORED
+	msetResponseTypeNS                             // NOT STORED
+	msetResponseTypeEX                             // EXISTS, cas modified
+	msetResponseTypeNF                             // NOT FOUND, cas not found
+)
+
+type msetResponse struct {
+	responseType msetResponseType
+}
+
+type mdelResponseType int
+
+const (
+	mdelResponseTypeHD mdelResponseType = iota + 1 // DELETED
+	mdelResponseTypeNF                             // NOT FOUND
+	mdelResponseTypeEX                             // EXISTS, cas not match
+)
+
+type mdelResponse struct {
+	responseType mdelResponseType
+}
+
 var errInvalidMGet = ErrBrokenPipe{reason: "can not parse mget response"}
+var errInvalidMSet = ErrBrokenPipe{reason: "can not parse mset response"}
+var errInvalidMDel = ErrBrokenPipe{reason: "can not parse mdel response"}
 
 func (p *parser) findCRLF(index int) int {
 	for i := index + 1; i < len(p.data); i++ {
@@ -95,7 +121,7 @@ func (p *parser) returnIfCRLF(index int, resp mgetResponse) (mgetResponse, error
 	return resp, nil
 }
 
-func (p *parser) parseFlags(index int, resp *mgetResponse) (int, error) {
+func (p *parser) parseMGetFlags(index int, resp *mgetResponse) (int, error) {
 	flags := parserFlags(0)
 	for i := index; i < len(p.data)-1; i++ {
 		if p.data[i] == 'W' {
@@ -130,7 +156,7 @@ func (p *parser) readMGetHD() (mgetResponse, error) {
 		responseType: mgetResponseTypeHD,
 	}
 
-	_, err := p.parseFlags(2, &resp)
+	_, err := p.parseMGetFlags(2, &resp)
 	if err != nil {
 		return mgetResponse{}, err
 	}
@@ -144,7 +170,7 @@ func (p *parser) readMGetVA() (mgetResponse, error) {
 		responseType: mgetResponseTypeVA,
 	}
 
-	crlfIndex, err := p.parseFlags(index, &resp)
+	crlfIndex, err := p.parseMGetFlags(index, &resp)
 	if err != nil {
 		return mgetResponse{}, err
 	}
@@ -205,4 +231,65 @@ func (p *parser) readMGet() (mgetResponse, error) {
 	}
 
 	return mgetResponse{}, errInvalidMGet
+}
+
+// Meta Set
+
+func (p *parser) readMSetWithCRLF(respType msetResponseType) (msetResponse, error) {
+	index := p.findCRLF(2)
+	if index < 0 {
+		return msetResponse{}, errInvalidMSet
+	}
+	return msetResponse{
+		responseType: respType,
+	}, nil
+}
+
+func (p *parser) readMSet() (msetResponse, error) {
+	if len(p.data) < 4 {
+		return msetResponse{}, errInvalidMSet
+	}
+
+	if p.prefixEqual('H', 'D') {
+		return p.readMSetWithCRLF(msetResponseTypeHD)
+	}
+	if p.prefixEqual('N', 'S') {
+		return p.readMSetWithCRLF(msetResponseTypeNS)
+	}
+	if p.prefixEqual('E', 'X') {
+		return p.readMSetWithCRLF(msetResponseTypeEX)
+	}
+	if p.prefixEqual('N', 'F') {
+		return p.readMSetWithCRLF(msetResponseTypeNF)
+	}
+
+	return msetResponse{}, errInvalidMSet
+}
+
+// Meta Delete
+
+func (p *parser) readMDelWithCRLF(respType mdelResponseType) (mdelResponse, error) {
+	index := p.findCRLF(2)
+	if index < 0 {
+		return mdelResponse{}, errInvalidMDel
+	}
+	return mdelResponse{
+		responseType: respType,
+	}, nil
+}
+
+func (p *parser) readMDel() (mdelResponse, error) {
+	if len(p.data) < 4 {
+		return mdelResponse{}, errInvalidMDel
+	}
+	if p.prefixEqual('H', 'D') {
+		return p.readMDelWithCRLF(mdelResponseTypeHD)
+	}
+	if p.prefixEqual('N', 'F') {
+		return p.readMDelWithCRLF(mdelResponseTypeNF)
+	}
+	if p.prefixEqual('E', 'X') {
+		return p.readMDelWithCRLF(mdelResponseTypeEX)
+	}
+	return mdelResponse{}, errInvalidMDel
 }
