@@ -1,5 +1,7 @@
 package memcache
 
+import "bytes"
+
 type parser struct {
 	data []byte
 }
@@ -10,10 +12,13 @@ func initParser(p *parser, data []byte) {
 
 type mgetResponseType int
 
+var serverErrorPrefix = []byte("SERVER_ERROR")
+
 const (
 	mgetResponseTypeVA mgetResponseType = iota + 1
 	mgetResponseTypeHD
 	mgetResponseTypeEN
+	mgetResponseTypeServerError
 )
 
 type parserFlags uint64
@@ -120,6 +125,62 @@ func (p *parser) parseFlags(index int, resp *mgetResponse) (int, error) {
 	return 0, errInvalidMGet
 }
 
+func (p *parser) readMGetHD() (mgetResponse, error) {
+	resp := mgetResponse{
+		responseType: mgetResponseTypeHD,
+	}
+
+	_, err := p.parseFlags(2, &resp)
+	if err != nil {
+		return mgetResponse{}, err
+	}
+	return resp, nil
+}
+
+func (p *parser) readMGetVA() (mgetResponse, error) {
+	num, index := findNumber(p.data, 3)
+
+	resp := mgetResponse{
+		responseType: mgetResponseTypeVA,
+	}
+
+	crlfIndex, err := p.parseFlags(index, &resp)
+	if err != nil {
+		return mgetResponse{}, err
+	}
+
+	dataEnd := crlfIndex + int(num)
+	if dataEnd+2 > len(p.data) {
+		return mgetResponse{}, errInvalidMGet
+	}
+
+	data := make([]byte, num)
+	copy(data, p.data[crlfIndex:dataEnd])
+	resp.data = data
+
+	if !p.pairEqual(dataEnd, '\r', '\n') {
+		return mgetResponse{}, errInvalidMGet
+	}
+
+	return resp, nil
+}
+
+func (p *parser) readServerError() error {
+	index := len(serverErrorPrefix)
+	crlfIndex := p.findCRLF(index + 1)
+	if crlfIndex < 0 {
+		return errInvalidMGet
+	}
+	data := make([]byte, crlfIndex-2-index-1)
+	copy(data, p.data[index+1:])
+	return NewServerError(string(data))
+}
+
+func (p *parser) isServerErrorPrefix() bool {
+	return p.prefixEqual('S', 'E') && len(p.data) > len(serverErrorPrefix) &&
+		bytes.Equal(p.data[:len(serverErrorPrefix)], serverErrorPrefix)
+}
+
 func (p *parser) readMGet() (mgetResponse, error) {
 	if len(p.data) < 4 {
 		return mgetResponse{}, errInvalidMGet
@@ -132,43 +193,15 @@ func (p *parser) readMGet() (mgetResponse, error) {
 	}
 
 	if p.prefixEqual('H', 'D') {
-		resp := mgetResponse{
-			responseType: mgetResponseTypeHD,
-		}
-
-		_, err := p.parseFlags(2, &resp)
-		if err != nil {
-			return mgetResponse{}, err
-		}
-		return resp, nil
+		return p.readMGetHD()
 	}
 
 	if p.prefixEqual('V', 'A') {
-		num, index := findNumber(p.data, 3)
+		return p.readMGetVA()
+	}
 
-		resp := mgetResponse{
-			responseType: mgetResponseTypeVA,
-		}
-
-		crlfIndex, err := p.parseFlags(index, &resp)
-		if err != nil {
-			return mgetResponse{}, err
-		}
-
-		dataEnd := crlfIndex + int(num)
-		if dataEnd+2 > len(p.data) {
-			return mgetResponse{}, errInvalidMGet
-		}
-
-		data := make([]byte, num)
-		copy(data, p.data[crlfIndex:dataEnd])
-		resp.data = data
-
-		if !p.pairEqual(dataEnd, '\r', '\n') {
-			return mgetResponse{}, errInvalidMGet
-		}
-
-		return resp, nil
+	if p.isServerErrorPrefix() {
+		return mgetResponse{}, p.readServerError()
 	}
 
 	return mgetResponse{}, errInvalidMGet

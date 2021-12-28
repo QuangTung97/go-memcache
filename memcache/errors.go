@@ -18,3 +18,17 @@ var ErrConnClosed = errors.New("memcache: connection closed")
 func (e ErrBrokenPipe) Error() string {
 	return fmt.Sprintf("broken pipe: %s", e.reason)
 }
+
+// ErrServerError ...
+type ErrServerError struct {
+	Message string
+}
+
+func (e ErrServerError) Error() string {
+	return fmt.Sprintf("server error: %s", e.Message)
+}
+
+// NewServerError ...
+func NewServerError(msg string) error {
+	return ErrServerError{Message: msg}
+}

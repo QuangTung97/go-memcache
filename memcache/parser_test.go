@@ -139,6 +139,26 @@ func TestParser_Read_MGet(t *testing.T) {
 				cas:          123,
 			},
 		},
+		{
+			name: "server-error-with-msg",
+			data: "SERVER_ERROR some message\r\n",
+			err:  NewServerError("some message"),
+		},
+		{
+			name: "prefix-server",
+			data: "SERVER_ERR",
+			err:  errInvalidMGet,
+		},
+		{
+			name: "prefix-server",
+			data: "SERV",
+			err:  errInvalidMGet,
+		},
+		{
+			name: "server-error-missing-lf",
+			data: "SERVER_ERROR msg01\r",
+			err:  errInvalidMGet,
+		},
 	}
 
 	for _, e := range table {
