@@ -16,17 +16,26 @@ const (
 	mgetResponseTypeEN
 )
 
+type parserFlags uint64
+
+const (
+	flagW parserFlags = 1 << iota // won cache lease
+	flagX                         // stale data
+	flagZ                         // already has winning flag
+)
+
 type mgetResponse struct {
 	responseType mgetResponseType
-	size         uint32
 	data         []byte
+	flags        parserFlags
+	cas          uint64
 }
 
 var errInvalidMGet = ErrBrokenPipe{reason: "can not parse mget response"}
 
 func (p *parser) findCRLF(index int) int {
 	for i := index + 1; i < len(p.data); i++ {
-		if p.data[i-1] == '\r' && p.data[i] == '\n' {
+		if p.isCRLF(i - 1) {
 			return i + 1
 		}
 	}
@@ -41,11 +50,15 @@ func (p *parser) pairEqual(i int, a, b byte) bool {
 	return p.data[i] == a && p.data[i+1] == b
 }
 
+func (p *parser) isCRLF(index int) bool {
+	return p.pairEqual(index, '\r', '\n')
+}
+
 func isDigit(c byte) bool {
 	return c >= '0' && c <= '9'
 }
 
-func findNumber(data []byte, index int) (uint32, int) {
+func findNumber(data []byte, index int) (uint64, int) {
 	foundIndex := -1
 	var firstChar byte
 	for i := index; i < len(data); i++ {
@@ -56,7 +69,7 @@ func findNumber(data []byte, index int) (uint32, int) {
 		}
 	}
 
-	num := uint32(firstChar - '0')
+	num := uint64(firstChar - '0')
 
 	var i int
 	for i = foundIndex + 1; i < len(data); i++ {
@@ -64,17 +77,47 @@ func findNumber(data []byte, index int) (uint32, int) {
 			break
 		}
 		num *= 10
-		num += uint32(data[i] - '0')
+		num += uint64(data[i] - '0')
 	}
 
-	return num, i
+	return num, i // next index right after number
 }
 
-func (p *parser) returnIfCRLF(resp mgetResponse) (mgetResponse, error) {
-	if p.findCRLF(2) < 0 {
+func (p *parser) returnIfCRLF(index int, resp mgetResponse) (mgetResponse, error) {
+	if p.findCRLF(index) < 0 {
 		return mgetResponse{}, errInvalidMGet
 	}
 	return resp, nil
+}
+
+func (p *parser) parseFlags(index int, resp *mgetResponse) (int, error) {
+	flags := parserFlags(0)
+	for i := index; i < len(p.data)-1; i++ {
+		if p.data[i] == 'W' {
+			flags |= flagW
+			continue
+		}
+		if p.data[i] == 'X' {
+			flags |= flagX
+			continue
+		}
+		if p.data[i] == 'Z' {
+			flags |= flagZ
+			continue
+		}
+		if p.data[i] == 'c' {
+			cas, nextIndex := findNumber(p.data, i+1)
+			resp.cas = cas
+			i = nextIndex - 1
+			continue
+		}
+
+		if p.isCRLF(i) {
+			resp.flags = flags
+			return i + 2, nil
+		}
+	}
+	return 0, errInvalidMGet
 }
 
 func (p *parser) readMGet() (mgetResponse, error) {
@@ -83,22 +126,33 @@ func (p *parser) readMGet() (mgetResponse, error) {
 	}
 
 	if p.prefixEqual('E', 'N') {
-		return p.returnIfCRLF(mgetResponse{
+		return p.returnIfCRLF(2, mgetResponse{
 			responseType: mgetResponseTypeEN,
 		})
 	}
 
 	if p.prefixEqual('H', 'D') {
-		return p.returnIfCRLF(mgetResponse{
+		resp := mgetResponse{
 			responseType: mgetResponseTypeHD,
-		})
+		}
+
+		_, err := p.parseFlags(2, &resp)
+		if err != nil {
+			return mgetResponse{}, err
+		}
+		return resp, nil
 	}
 
 	if p.prefixEqual('V', 'A') {
 		num, index := findNumber(p.data, 3)
-		crlfIndex := p.findCRLF(index)
-		if crlfIndex < 0 {
-			return mgetResponse{}, errInvalidMGet
+
+		resp := mgetResponse{
+			responseType: mgetResponseTypeVA,
+		}
+
+		crlfIndex, err := p.parseFlags(index, &resp)
+		if err != nil {
+			return mgetResponse{}, err
 		}
 
 		dataEnd := crlfIndex + int(num)
@@ -108,16 +162,13 @@ func (p *parser) readMGet() (mgetResponse, error) {
 
 		data := make([]byte, num)
 		copy(data, p.data[crlfIndex:dataEnd])
+		resp.data = data
 
 		if !p.pairEqual(dataEnd, '\r', '\n') {
 			return mgetResponse{}, errInvalidMGet
 		}
 
-		return mgetResponse{
-			responseType: mgetResponseTypeVA,
-			size:         num,
-			data:         data,
-		}, nil
+		return resp, nil
 	}
 
 	return mgetResponse{}, errInvalidMGet

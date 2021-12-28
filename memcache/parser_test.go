@@ -57,7 +57,6 @@ func TestParser_Read_MGet(t *testing.T) {
 			data: "VA 5\r\nAABBC\r\n",
 			resp: mgetResponse{
 				responseType: mgetResponseTypeVA,
-				size:         5,
 				data:         []byte("AABBC"),
 			},
 		},
@@ -75,6 +74,70 @@ func TestParser_Read_MGet(t *testing.T) {
 			name: "VA-missing-va-lf",
 			data: "VA 5\rABCDEFSA",
 			err:  errInvalidMGet,
+		},
+		{
+			name: "invalid-prefix",
+			data: "OK 10\r\n",
+			err:  errInvalidMGet,
+		},
+		{
+			name: "HD-with-flag-W",
+			data: "HD W\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeHD,
+				flags:        flagW,
+			},
+		},
+		{
+			name: "HD-with-flag-Z",
+			data: "HD Z\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeHD,
+				flags:        flagZ,
+			},
+		},
+		{
+			name: "HD-with-flag-X",
+			data: "HD X\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeHD,
+				flags:        flagX,
+			},
+		},
+		{
+			name: "HD-with-3-flags",
+			data: "HD W X Z\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeHD,
+				flags:        flagW | flagX | flagZ,
+			},
+		},
+		{
+			name: "HD-with-cas",
+			data: "HD c123\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeHD,
+				cas:          123,
+			},
+		},
+		{
+			name: "HD-with-cas-and-X-Z",
+			data: "HD c123 X Z\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeHD,
+				flags:        flagX | flagZ,
+				cas:          123,
+			},
+		},
+		{
+			name: "VA-with-X-Z",
+			data: "VA 3 c123 X Z\r\nXXX\r\n",
+			resp: mgetResponse{
+				responseType: mgetResponseTypeVA,
+				flags:        flagX | flagZ,
+				data:         []byte("XXX"),
+				cas:          123,
+			},
 		},
 	}
 
