@@ -285,3 +285,121 @@ func TestParser_Read_MDel(t *testing.T) {
 		})
 	}
 }
+
+func TestParser_Multi_MGet_HD_First(t *testing.T) {
+	p := newParserStr("HD\r\nEN\r\n")
+
+	resp, err := p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeHD,
+	}, resp)
+
+	resp, err = p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeEN,
+	}, resp)
+}
+
+func TestParser_Multi_MGet_EN_First(t *testing.T) {
+	p := newParserStr("EN\r\nHD\r\n")
+
+	resp, err := p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeEN,
+	}, resp)
+
+	resp, err = p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeHD,
+	}, resp)
+}
+
+func TestParser_Multi_MGet_VA_First(t *testing.T) {
+	p := newParserStr("VA 4 c55 W\r\nAAAA\r\nHD\r\n")
+
+	resp, err := p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeVA,
+		data:         []byte("AAAA"),
+		flags:        flagW,
+		cas:          55,
+	}, resp)
+
+	resp, err = p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeHD,
+	}, resp)
+}
+
+func TestParser_Multi_MGet_Server_Error_First(t *testing.T) {
+	p := newParserStr("SERVER_ERROR some msg\r\nHD c55\r\n")
+
+	resp, err := p.readMGet()
+	assert.Equal(t, NewServerError("some msg"), err)
+	assert.Equal(t, mgetResponse{}, resp)
+
+	resp, err = p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeHD,
+		cas:          55,
+	}, resp)
+}
+
+func TestParser_Multi_MGet_2_VA(t *testing.T) {
+	p := newParserStr("VA 3\r\n565\r\nVA 4 W c33\r\nXXXX\r\n")
+
+	resp, err := p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeVA,
+		data:         []byte("565"),
+	}, resp)
+
+	resp, err = p.readMGet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mgetResponse{
+		responseType: mgetResponseTypeVA,
+		data:         []byte("XXXX"),
+		cas:          33,
+		flags:        flagW,
+	}, resp)
+}
+
+func TestParser_Multi_MSet_HD_First(t *testing.T) {
+	p := newParserStr("HD\r\nNS\r\n")
+
+	resp, err := p.readMSet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, msetResponse{
+		responseType: msetResponseTypeHD,
+	}, resp)
+
+	resp, err = p.readMSet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, msetResponse{
+		responseType: msetResponseTypeNS,
+	}, resp)
+}
+
+func TestParser_Multi_MDel_HD_First(t *testing.T) {
+	p := newParserStr("HD\r\nNF\r\n")
+
+	resp, err := p.readMDel()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mdelResponse{
+		responseType: mdelResponseTypeHD,
+	}, resp)
+
+	resp, err = p.readMDel()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, mdelResponse{
+		responseType: mdelResponseTypeNF,
+	}, resp)
+}

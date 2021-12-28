@@ -115,9 +115,11 @@ func findNumber(data []byte, index int) (uint64, int) {
 }
 
 func (p *parser) returnIfCRLF(index int, resp mgetResponse) (mgetResponse, error) {
-	if p.findCRLF(index) < 0 {
+	nextIndex := p.findCRLF(index)
+	if nextIndex < 0 {
 		return mgetResponse{}, errInvalidMGet
 	}
+	p.skipData(nextIndex)
 	return resp, nil
 }
 
@@ -151,15 +153,20 @@ func (p *parser) parseMGetFlags(index int, resp *mgetResponse) (int, error) {
 	return 0, errInvalidMGet
 }
 
+func (p *parser) skipData(nextIndex int) {
+	p.data = p.data[nextIndex:]
+}
+
 func (p *parser) readMGetHD() (mgetResponse, error) {
 	resp := mgetResponse{
 		responseType: mgetResponseTypeHD,
 	}
 
-	_, err := p.parseMGetFlags(2, &resp)
+	nextIndex, err := p.parseMGetFlags(2, &resp)
 	if err != nil {
 		return mgetResponse{}, err
 	}
+	p.skipData(nextIndex)
 	return resp, nil
 }
 
@@ -188,6 +195,7 @@ func (p *parser) readMGetVA() (mgetResponse, error) {
 		return mgetResponse{}, errInvalidMGet
 	}
 
+	p.skipData(dataEnd + 2)
 	return resp, nil
 }
 
@@ -197,8 +205,12 @@ func (p *parser) readServerError() error {
 	if crlfIndex < 0 {
 		return errInvalidMGet
 	}
+
 	data := make([]byte, crlfIndex-2-index-1)
 	copy(data, p.data[index+1:])
+
+	p.skipData(crlfIndex)
+
 	return NewServerError(string(data))
 }
 
@@ -240,6 +252,7 @@ func (p *parser) readMSetWithCRLF(respType msetResponseType) (msetResponse, erro
 	if index < 0 {
 		return msetResponse{}, errInvalidMSet
 	}
+	p.skipData(index)
 	return msetResponse{
 		responseType: respType,
 	}, nil
@@ -273,6 +286,7 @@ func (p *parser) readMDelWithCRLF(respType mdelResponseType) (mdelResponse, erro
 	if index < 0 {
 		return mdelResponse{}, errInvalidMDel
 	}
+	p.skipData(index)
 	return mdelResponse{
 		responseType: respType,
 	}, nil
