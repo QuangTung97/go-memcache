@@ -18,7 +18,6 @@ type Pipeline struct {
 
 	runningCmdMap map[int]*pipelineCmd
 	nextKey       int
-	buildingKeys  []int
 
 	currentCmdKeys []int
 
@@ -28,10 +27,10 @@ type Pipeline struct {
 // Pipeline creates a pipeline
 func (c *Client) Pipeline() *Pipeline {
 	p := &Pipeline{
-		c:             c.getNextConn(),
-		runningCmdMap: map[int]*pipelineCmd{},
-		buildingKeys:  make([]int, 0, 32),
-		nextKey:       0,
+		c:              c.getNextConn(),
+		runningCmdMap:  map[int]*pipelineCmd{},
+		currentCmdKeys: make([]int, 0, 32),
+		nextKey:        0,
 	}
 	initCmdBuilder(&p.builder)
 	return p
@@ -67,23 +66,22 @@ func (p *Pipeline) waitAndParseCmdData() {
 		}
 	}
 
+	p.currentCmdKeys = p.currentCmdKeys[:0]
 	freeCommandData(currentCmd)
 }
 
-func (p *Pipeline) resetBuilderAndCmdData() {
+func (p *Pipeline) resetCmdBuilder() {
 	initCmdBuilder(&p.builder)
-	p.currentCmdKeys = p.currentCmdKeys[:0]
 }
 
 func (p *Pipeline) pushAndWaitImpl() {
 	p.c.pushCommand(p.builder.getCmd())
 
 	// Set all of published = true
-	for _, key := range p.buildingKeys {
+	for _, key := range p.currentCmdKeys {
 		c := p.runningCmdMap[key]
 		c.published = true
 	}
-	p.buildingKeys = p.buildingKeys[:0]
 
 	p.waitAndParseCmdData()
 }
@@ -93,7 +91,7 @@ func (p *Pipeline) pushAndWaitResponses(cmd *pipelineCmd) {
 		return
 	}
 	p.pushAndWaitImpl()
-	p.resetBuilderAndCmdData()
+	p.resetCmdBuilder()
 }
 
 func (p *Pipeline) addCommand(cmdType commandType) int {
@@ -103,7 +101,6 @@ func (p *Pipeline) addCommand(cmdType commandType) int {
 	p.nextKey++
 	keyIndex := p.nextKey
 
-	p.buildingKeys = append(p.buildingKeys, keyIndex)
 	p.currentCmdKeys = append(p.currentCmdKeys, keyIndex)
 
 	p.runningCmdMap[keyIndex] = cmd
@@ -113,7 +110,7 @@ func (p *Pipeline) addCommand(cmdType commandType) int {
 
 // Finish ...
 func (p *Pipeline) Finish() {
-	if len(p.buildingKeys) > 0 {
+	if len(p.currentCmdKeys) > 0 {
 		p.pushAndWaitImpl()
 	}
 }
