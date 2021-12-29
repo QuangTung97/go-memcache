@@ -29,7 +29,7 @@ enableAllRules = true
 [rule.cyclomatic]
     Arguments = [14]
 [rule.cognitive-complexity]
-    Arguments = [14]
+    Arguments = [16]
 [rule.function-result-limit]
     Arguments = [4]
 [rule.unhandled-error]
