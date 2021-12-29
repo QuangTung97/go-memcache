@@ -6,9 +6,17 @@ import (
 	"testing"
 )
 
+func connFlushAll(c *conn) {
+	cmd := newCommandFromString("flush_all\r\n")
+	c.pushCommand(cmd)
+	cmd.waitCompleted()
+}
+
 func TestConn_Simple_Get_Miss(t *testing.T) {
 	c, err := newConn("localhost:11211")
 	assert.Equal(t, nil, err)
+
+	connFlushAll(c)
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
 	c.pushCommand(cmd1)
@@ -20,6 +28,8 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 	c, err := newConn("localhost:11211")
 	assert.Equal(t, nil, err)
+
+	connFlushAll(c)
 
 	cmd1 := newCommandFromString("mg key01 v\r\nmg key02 v\r\nmg key03 v\r\n")
 	cmd1.cmdCount = 3

@@ -1,7 +1,7 @@
 package memcache
 
 import (
-	"context"
+	"errors"
 	"sync/atomic"
 )
 
@@ -13,6 +13,10 @@ type Client struct {
 
 // New ...
 func New(addr string, numConns int) (*Client, error) {
+	if numConns <= 0 {
+		return nil, errors.New("numConns must > 0")
+	}
+
 	conns := make([]*conn, 0, numConns)
 
 	for i := 0; i < numConns; i++ {
@@ -32,9 +36,4 @@ func New(addr string, numConns int) (*Client, error) {
 func (c *Client) getNextConn() *conn {
 	next := atomic.AddUint64(&c.next, 1)
 	return c.conns[next%uint64(len(c.conns))]
-}
-
-// Set ...
-func (c *Client) Set(_ context.Context, _ string, _ []byte) error {
-	return nil
 }
