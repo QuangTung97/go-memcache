@@ -100,3 +100,31 @@ func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
 		Data: []byte("simple\r\nvalue"),
 	}, resp2)
 }
+
+func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	resp, _ := p.MGet("key01", MGetOptions{N: 10, CAS: true})()
+	_, _ = p.MSet("key01", []byte("simple\r\nvalue"), MSetOptions{CAS: resp.CAS})()
+
+	delResp, err := p.MDel("key01", MDelOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MDelResponse{
+		Type: MDelResponseTypeHD,
+	}, delResp)
+
+	resp, err = p.MGet("key01", MGetOptions{N: 10, CAS: true})()
+	assert.Equal(t, nil, err)
+	assertMGetEqual(t, MGetResponse{
+		Type:  MGetResponseTypeVA,
+		Data:  []byte{},
+		Flags: MGetFlagW,
+	}, resp)
+}

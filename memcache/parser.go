@@ -75,8 +75,9 @@ const (
 	MDelResponseTypeEX // EXISTS, cas not match
 )
 
-type mdelResponse struct {
-	responseType MDelResponseType
+// MDelResponse ...
+type MDelResponse struct {
+	Type MDelResponseType
 }
 
 // ErrInvalidMGet ...
@@ -305,20 +306,20 @@ func (p *parser) readMSet() (MSetResponse, error) {
 
 // Meta Delete
 
-func (p *parser) readMDelWithCRLF(respType MDelResponseType) (mdelResponse, error) {
+func (p *parser) readMDelWithCRLF(respType MDelResponseType) (MDelResponse, error) {
 	index := p.findCRLF(2)
 	if index < 0 {
-		return mdelResponse{}, ErrInvalidMDel
+		return MDelResponse{}, ErrInvalidMDel
 	}
 	p.skipData(index)
-	return mdelResponse{
-		responseType: respType,
+	return MDelResponse{
+		Type: respType,
 	}, nil
 }
 
-func (p *parser) readMDel() (mdelResponse, error) {
+func (p *parser) readMDel() (MDelResponse, error) {
 	if len(p.data) < 4 {
-		return mdelResponse{}, ErrInvalidMDel
+		return MDelResponse{}, ErrInvalidMDel
 	}
 	if p.prefixEqual('H', 'D') {
 		return p.readMDelWithCRLF(MDelResponseTypeHD)
@@ -329,5 +330,5 @@ func (p *parser) readMDel() (mdelResponse, error) {
 	if p.prefixEqual('E', 'X') {
 		return p.readMDelWithCRLF(MDelResponseTypeEX)
 	}
-	return mdelResponse{}, ErrInvalidMDel
+	return MDelResponse{}, ErrInvalidMDel
 }

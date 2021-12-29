@@ -59,10 +59,15 @@ func (p *Pipeline) waitAndParseCmdData() {
 		case commandTypeMSet:
 			cmd.resp, cmd.err = ps.readMSet()
 
+		case commandTypeMDel:
+			cmd.resp, cmd.err = ps.readMDel()
+
 		default:
 			panic("invalid cmd type")
 		}
 	}
+
+	freeCommandData(currentCmd)
 }
 
 func (p *Pipeline) resetBuilderAndCmdData() {
@@ -156,6 +161,25 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 		resp, ok := cmd.resp.(MSetResponse)
 		if !ok {
 			return MSetResponse{}, cmd.err
+		}
+		return resp, nil
+	}
+}
+
+// MDel ...
+func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, error) {
+	keyIndex := p.addCommand(commandTypeMDel)
+
+	p.builder.addMDel(key, opts)
+
+	return func() (MDelResponse, error) {
+		cmd, err := p.getCommand(keyIndex)
+		if err != nil {
+			return MDelResponse{}, err
+		}
+		resp, ok := cmd.resp.(MDelResponse)
+		if !ok {
+			return MDelResponse{}, cmd.err
 		}
 		return resp, nil
 	}

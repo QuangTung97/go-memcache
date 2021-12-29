@@ -237,7 +237,7 @@ func TestParser_Read_MDel(t *testing.T) {
 		name string
 		data string
 		err  error
-		resp mdelResponse
+		resp MDelResponse
 	}{
 		{
 			name: "empty",
@@ -252,22 +252,22 @@ func TestParser_Read_MDel(t *testing.T) {
 		{
 			name: "HD",
 			data: "HD\r\n",
-			resp: mdelResponse{
-				responseType: MDelResponseTypeHD,
+			resp: MDelResponse{
+				Type: MDelResponseTypeHD,
 			},
 		},
 		{
 			name: "NF",
 			data: "NF\r\n",
-			resp: mdelResponse{
-				responseType: MDelResponseTypeNF,
+			resp: MDelResponse{
+				Type: MDelResponseTypeNF,
 			},
 		},
 		{
 			name: "EX",
 			data: "EX\r\n",
-			resp: mdelResponse{
-				responseType: MDelResponseTypeEX,
+			resp: MDelResponse{
+				Type: MDelResponseTypeEX,
 			},
 		},
 		{
@@ -393,13 +393,13 @@ func TestParser_Multi_MDel_HD_First(t *testing.T) {
 
 	resp, err := p.readMDel()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mdelResponse{
-		responseType: MDelResponseTypeHD,
+	assert.Equal(t, MDelResponse{
+		Type: MDelResponseTypeHD,
 	}, resp)
 
 	resp, err = p.readMDel()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mdelResponse{
-		responseType: MDelResponseTypeNF,
+	assert.Equal(t, MDelResponse{
+		Type: MDelResponseTypeNF,
 	}, resp)
 }
