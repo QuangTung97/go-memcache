@@ -3,12 +3,9 @@ package memcache
 import (
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 type coreConnection struct {
-	nc unsafe.Pointer // point to netConn
-
 	responseReader *responseReader
 	sender         *sender
 

@@ -10,59 +10,83 @@ func initParser(p *parser, data []byte) {
 	p.data = data
 }
 
-type mgetResponseType int
+// MGetResponseType ...
+type MGetResponseType int
 
 var serverErrorPrefix = []byte("SERVER_ERROR")
 
 const (
-	mgetResponseTypeVA mgetResponseType = iota + 1
-	mgetResponseTypeHD
-	mgetResponseTypeEN
+	// MGetResponseTypeVA ...
+	MGetResponseTypeVA MGetResponseType = iota + 1
+	// MGetResponseTypeHD ...
+	MGetResponseTypeHD
+	// MGetResponseTypeEN ...
+	MGetResponseTypeEN
 )
 
-type parserFlags uint64
+// MGetFlags ...
+type MGetFlags uint64
 
 const (
-	flagW parserFlags = 1 << iota // won cache lease
-	flagX                         // stale data
-	flagZ                         // already has winning flag
+	// MGetFlagW ...
+	MGetFlagW MGetFlags = 1 << iota // won cache lease
+	// MGetFlagX ...
+	MGetFlagX // stale data
+	// MGetFlagZ ...
+	MGetFlagZ // already has winning flag
 )
 
-type mgetResponse struct {
-	responseType mgetResponseType
-	data         []byte
-	flags        parserFlags
-	cas          uint64
+// MGetResponse ...
+type MGetResponse struct {
+	Type  MGetResponseType
+	Data  []byte
+	Flags MGetFlags
+	CAS   uint64
 }
 
-type msetResponseType int
+// MSetResponseType ...
+type MSetResponseType int
 
 const (
-	msetResponseTypeHD msetResponseType = iota + 1 // STORED
-	msetResponseTypeNS                             // NOT STORED
-	msetResponseTypeEX                             // EXISTS, cas modified
-	msetResponseTypeNF                             // NOT FOUND, cas not found
+	// MSetResponseTypeHD ...
+	MSetResponseTypeHD MSetResponseType = iota + 1 // STORED
+	// MSetResponseTypeNS ...
+	MSetResponseTypeNS // NOT STORED
+	// MSetResponseTypeEX ...
+	MSetResponseTypeEX // EXISTS, cas modified
+	// MSetResponseTypeNF ...
+	MSetResponseTypeNF // NOT FOUND, cas not found
 )
 
-type msetResponse struct {
-	responseType msetResponseType
+// MSetResponse ...
+type MSetResponse struct {
+	Type MSetResponseType
 }
 
-type mdelResponseType int
+// MDelResponseType ...
+type MDelResponseType int
 
 const (
-	mdelResponseTypeHD mdelResponseType = iota + 1 // DELETED
-	mdelResponseTypeNF                             // NOT FOUND
-	mdelResponseTypeEX                             // EXISTS, cas not match
+	// MDelResponseTypeHD ...
+	MDelResponseTypeHD MDelResponseType = iota + 1 // DELETED
+	// MDelResponseTypeNF ...
+	MDelResponseTypeNF // NOT FOUND
+	// MDelResponseTypeEX ...
+	MDelResponseTypeEX // EXISTS, cas not match
 )
 
 type mdelResponse struct {
-	responseType mdelResponseType
+	responseType MDelResponseType
 }
 
-var errInvalidMGet = ErrBrokenPipe{reason: "can not parse mget response"}
-var errInvalidMSet = ErrBrokenPipe{reason: "can not parse mset response"}
-var errInvalidMDel = ErrBrokenPipe{reason: "can not parse mdel response"}
+// ErrInvalidMGet ...
+var ErrInvalidMGet = ErrBrokenPipe{reason: "can not parse mget response"}
+
+// ErrInvalidMSet ...
+var ErrInvalidMSet = ErrBrokenPipe{reason: "can not parse mset response"}
+
+// ErrInvalidMDel ...
+var ErrInvalidMDel = ErrBrokenPipe{reason: "can not parse mdel response"}
 
 func (p *parser) findCRLF(index int) int {
 	for i := index + 1; i < len(p.data); i++ {
@@ -114,85 +138,85 @@ func findNumber(data []byte, index int) (uint64, int) {
 	return num, i // next index right after number
 }
 
-func (p *parser) returnIfCRLF(index int, resp mgetResponse) (mgetResponse, error) {
+func (p *parser) returnIfCRLF(index int, resp MGetResponse) (MGetResponse, error) {
 	nextIndex := p.findCRLF(index)
 	if nextIndex < 0 {
-		return mgetResponse{}, errInvalidMGet
+		return MGetResponse{}, ErrInvalidMGet
 	}
 	p.skipData(nextIndex)
 	return resp, nil
 }
 
-func (p *parser) parseMGetFlags(index int, resp *mgetResponse) (int, error) {
-	flags := parserFlags(0)
+func (p *parser) parseMGetFlags(index int, resp *MGetResponse) (int, error) {
+	flags := MGetFlags(0)
 	for i := index; i < len(p.data)-1; i++ {
 		if p.data[i] == 'W' {
-			flags |= flagW
+			flags |= MGetFlagW
 			continue
 		}
 		if p.data[i] == 'X' {
-			flags |= flagX
+			flags |= MGetFlagX
 			continue
 		}
 		if p.data[i] == 'Z' {
-			flags |= flagZ
+			flags |= MGetFlagZ
 			continue
 		}
 		if p.data[i] == 'c' {
 			cas, nextIndex := findNumber(p.data, i+1)
-			resp.cas = cas
+			resp.CAS = cas
 			i = nextIndex - 1
 			continue
 		}
 
 		if p.isCRLF(i) {
-			resp.flags = flags
+			resp.Flags = flags
 			return i + 2, nil
 		}
 	}
-	return 0, errInvalidMGet
+	return 0, ErrInvalidMGet
 }
 
 func (p *parser) skipData(nextIndex int) {
 	p.data = p.data[nextIndex:]
 }
 
-func (p *parser) readMGetHD() (mgetResponse, error) {
-	resp := mgetResponse{
-		responseType: mgetResponseTypeHD,
+func (p *parser) readMGetHD() (MGetResponse, error) {
+	resp := MGetResponse{
+		Type: MGetResponseTypeHD,
 	}
 
 	nextIndex, err := p.parseMGetFlags(2, &resp)
 	if err != nil {
-		return mgetResponse{}, err
+		return MGetResponse{}, err
 	}
 	p.skipData(nextIndex)
 	return resp, nil
 }
 
-func (p *parser) readMGetVA() (mgetResponse, error) {
+func (p *parser) readMGetVA() (MGetResponse, error) {
 	num, index := findNumber(p.data, 3)
 
-	resp := mgetResponse{
-		responseType: mgetResponseTypeVA,
+	resp := MGetResponse{
+		Type: MGetResponseTypeVA,
 	}
 
 	crlfIndex, err := p.parseMGetFlags(index, &resp)
 	if err != nil {
-		return mgetResponse{}, err
+		return MGetResponse{}, err
 	}
 
 	dataEnd := crlfIndex + int(num)
 	if dataEnd+2 > len(p.data) {
-		return mgetResponse{}, errInvalidMGet
+		return MGetResponse{}, ErrInvalidMGet
 	}
 
 	data := make([]byte, num)
 	copy(data, p.data[crlfIndex:dataEnd])
-	resp.data = data
+	resp.Data = data
 
 	if !p.pairEqual(dataEnd, '\r', '\n') {
-		return mgetResponse{}, errInvalidMGet
+		return MGetResponse{}, ErrInvalidMGet
 	}
 
 	p.skipData(dataEnd + 2)
@@ -203,7 +227,7 @@ func (p *parser) readServerError() error {
 	index := len(serverErrorPrefix)
 	crlfIndex := p.findCRLF(index + 1)
 	if crlfIndex < 0 {
-		return errInvalidMGet
+		return ErrInvalidMGet
 	}
 
 	data := make([]byte, crlfIndex-2-index-1)
@@ -219,14 +243,14 @@ func (p *parser) isServerErrorPrefix() bool {
 		bytes.Equal(p.data[:len(serverErrorPrefix)], serverErrorPrefix)
 }
 
-func (p *parser) readMGet() (mgetResponse, error) {
+func (p *parser) readMGet() (MGetResponse, error) {
 	if len(p.data) < 4 {
-		return mgetResponse{}, errInvalidMGet
+		return MGetResponse{}, ErrInvalidMGet
 	}
 
 	if p.prefixEqual('E', 'N') {
-		return p.returnIfCRLF(2, mgetResponse{
-			responseType: mgetResponseTypeEN,
+		return p.returnIfCRLF(2, MGetResponse{
+			Type: MGetResponseTypeEN,
 		})
 	}
 
@@ -239,52 +263,52 @@ func (p *parser) readMGet() (mgetResponse, error) {
 	}
 
 	if p.isServerErrorPrefix() {
-		return mgetResponse{}, p.readServerError()
+		return MGetResponse{}, p.readServerError()
 	}
 
-	return mgetResponse{}, errInvalidMGet
+	return MGetResponse{}, ErrInvalidMGet
 }
 
 // Meta Set
 
-func (p *parser) readMSetWithCRLF(respType msetResponseType) (msetResponse, error) {
+func (p *parser) readMSetWithCRLF(respType MSetResponseType) (MSetResponse, error) {
 	index := p.findCRLF(2)
 	if index < 0 {
-		return msetResponse{}, errInvalidMSet
+		return MSetResponse{}, ErrInvalidMSet
 	}
 	p.skipData(index)
-	return msetResponse{
-		responseType: respType,
+	return MSetResponse{
+		Type: respType,
 	}, nil
 }
 
-func (p *parser) readMSet() (msetResponse, error) {
+func (p *parser) readMSet() (MSetResponse, error) {
 	if len(p.data) < 4 {
-		return msetResponse{}, errInvalidMSet
+		return MSetResponse{}, ErrInvalidMSet
 	}
 
 	if p.prefixEqual('H', 'D') {
-		return p.readMSetWithCRLF(msetResponseTypeHD)
+		return p.readMSetWithCRLF(MSetResponseTypeHD)
 	}
 	if p.prefixEqual('N', 'S') {
-		return p.readMSetWithCRLF(msetResponseTypeNS)
+		return p.readMSetWithCRLF(MSetResponseTypeNS)
 	}
 	if p.prefixEqual('E', 'X') {
-		return p.readMSetWithCRLF(msetResponseTypeEX)
+		return p.readMSetWithCRLF(MSetResponseTypeEX)
 	}
 	if p.prefixEqual('N', 'F') {
-		return p.readMSetWithCRLF(msetResponseTypeNF)
+		return p.readMSetWithCRLF(MSetResponseTypeNF)
 	}
 
-	return msetResponse{}, errInvalidMSet
+	return MSetResponse{}, ErrInvalidMSet
 }
 
 // Meta Delete
 
-func (p *parser) readMDelWithCRLF(respType mdelResponseType) (mdelResponse, error) {
+func (p *parser) readMDelWithCRLF(respType MDelResponseType) (mdelResponse, error) {
 	index := p.findCRLF(2)
 	if index < 0 {
-		return mdelResponse{}, errInvalidMDel
+		return mdelResponse{}, ErrInvalidMDel
 	}
 	p.skipData(index)
 	return mdelResponse{
@@ -294,16 +318,16 @@ func (p *parser) readMDelWithCRLF(respType mdelResponseType) (mdelResponse, erro
 
 func (p *parser) readMDel() (mdelResponse, error) {
 	if len(p.data) < 4 {
-		return mdelResponse{}, errInvalidMDel
+		return mdelResponse{}, ErrInvalidMDel
 	}
 	if p.prefixEqual('H', 'D') {
-		return p.readMDelWithCRLF(mdelResponseTypeHD)
+		return p.readMDelWithCRLF(MDelResponseTypeHD)
 	}
 	if p.prefixEqual('N', 'F') {
-		return p.readMDelWithCRLF(mdelResponseTypeNF)
+		return p.readMDelWithCRLF(MDelResponseTypeNF)
 	}
 	if p.prefixEqual('E', 'X') {
-		return p.readMDelWithCRLF(mdelResponseTypeEX)
+		return p.readMDelWithCRLF(MDelResponseTypeEX)
 	}
-	return mdelResponse{}, errInvalidMDel
+	return mdelResponse{}, ErrInvalidMDel
 }

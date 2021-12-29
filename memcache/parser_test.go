@@ -16,7 +16,7 @@ func TestParser_Read_MGet(t *testing.T) {
 		name string
 		data string
 		err  error
-		resp mgetResponse
+		resp MGetResponse
 	}{
 		{
 			name: "empty",
@@ -26,117 +26,117 @@ func TestParser_Read_MGet(t *testing.T) {
 		{
 			name: "EN",
 			data: "EN\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeEN,
+			resp: MGetResponse{
+				Type: MGetResponseTypeEN,
 			},
 		},
 		{
 			name: "HD",
 			data: "HD\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
+			resp: MGetResponse{
+				Type: MGetResponseTypeHD,
 			},
 		},
 		{
 			name: "missing-lf",
 			data: "EN\r",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "missing-lf",
 			data: "EN \r",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "missing-lf",
 			data: "HD \r",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "VA",
 			data: "VA 5\r\nAABBC\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeVA,
-				data:         []byte("AABBC"),
+			resp: MGetResponse{
+				Type: MGetResponseTypeVA,
+				Data: []byte("AABBC"),
 			},
 		},
 		{
 			name: "VA-missing-data-lf",
 			data: "VA 5\r\nAABBC\r",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "VA-missing-wrong-lf",
 			data: "VA 5\r\nAABBC\r3",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "VA-missing-va-lf",
 			data: "VA 5\rABCDEFSA",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "invalid-prefix",
 			data: "OK 10\r\n",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "HD-with-flag-W",
 			data: "HD W\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
-				flags:        flagW,
+			resp: MGetResponse{
+				Type:  MGetResponseTypeHD,
+				Flags: MGetFlagW,
 			},
 		},
 		{
 			name: "HD-with-flag-Z",
 			data: "HD Z\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
-				flags:        flagZ,
+			resp: MGetResponse{
+				Type:  MGetResponseTypeHD,
+				Flags: MGetFlagZ,
 			},
 		},
 		{
 			name: "HD-with-flag-X",
 			data: "HD X\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
-				flags:        flagX,
+			resp: MGetResponse{
+				Type:  MGetResponseTypeHD,
+				Flags: MGetFlagX,
 			},
 		},
 		{
 			name: "HD-with-3-flags",
 			data: "HD W X Z\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
-				flags:        flagW | flagX | flagZ,
+			resp: MGetResponse{
+				Type:  MGetResponseTypeHD,
+				Flags: MGetFlagW | MGetFlagX | MGetFlagZ,
 			},
 		},
 		{
 			name: "HD-with-cas",
 			data: "HD c123\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
-				cas:          123,
+			resp: MGetResponse{
+				Type: MGetResponseTypeHD,
+				CAS:  123,
 			},
 		},
 		{
 			name: "HD-with-cas-and-X-Z",
 			data: "HD c123 X Z\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeHD,
-				flags:        flagX | flagZ,
-				cas:          123,
+			resp: MGetResponse{
+				Type:  MGetResponseTypeHD,
+				Flags: MGetFlagX | MGetFlagZ,
+				CAS:   123,
 			},
 		},
 		{
 			name: "VA-with-X-Z",
 			data: "VA 3 c123 X Z\r\nXXX\r\n",
-			resp: mgetResponse{
-				responseType: mgetResponseTypeVA,
-				flags:        flagX | flagZ,
-				data:         []byte("XXX"),
-				cas:          123,
+			resp: MGetResponse{
+				Type:  MGetResponseTypeVA,
+				Flags: MGetFlagX | MGetFlagZ,
+				Data:  []byte("XXX"),
+				CAS:   123,
 			},
 		},
 		{
@@ -147,17 +147,17 @@ func TestParser_Read_MGet(t *testing.T) {
 		{
 			name: "prefix-server",
 			data: "SERVER_ERR",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "prefix-server",
 			data: "SERV",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 		{
 			name: "server-error-missing-lf",
 			data: "SERVER_ERROR msg01\r",
-			err:  errInvalidMGet,
+			err:  ErrInvalidMGet,
 		},
 	}
 
@@ -176,50 +176,50 @@ func TestParser_Read_MSet(t *testing.T) {
 		name string
 		data string
 		err  error
-		resp msetResponse
+		resp MSetResponse
 	}{
 		{
 			name: "empty",
 			data: "",
-			err:  errInvalidMSet,
+			err:  ErrInvalidMSet,
 		},
 		{
 			name: "HD",
 			data: "HD\r\n",
-			resp: msetResponse{
-				responseType: msetResponseTypeHD,
+			resp: MSetResponse{
+				Type: MSetResponseTypeHD,
 			},
 		},
 		{
 			name: "NS",
 			data: "NS\r\n",
-			resp: msetResponse{
-				responseType: msetResponseTypeNS,
+			resp: MSetResponse{
+				Type: MSetResponseTypeNS,
 			},
 		},
 		{
 			name: "EX",
 			data: "EX\r\n",
-			resp: msetResponse{
-				responseType: msetResponseTypeEX,
+			resp: MSetResponse{
+				Type: MSetResponseTypeEX,
 			},
 		},
 		{
 			name: "NF",
 			data: "NF\r\n",
-			resp: msetResponse{
-				responseType: msetResponseTypeNF,
+			resp: MSetResponse{
+				Type: MSetResponseTypeNF,
 			},
 		},
 		{
 			name: "HD-missing-lf",
 			data: "HD  \r",
-			err:  errInvalidMSet,
+			err:  ErrInvalidMSet,
 		},
 		{
 			name: "invalid-prefix",
 			data: "OK  \r",
-			err:  errInvalidMSet,
+			err:  ErrInvalidMSet,
 		},
 	}
 	for _, e := range table {
@@ -242,38 +242,38 @@ func TestParser_Read_MDel(t *testing.T) {
 		{
 			name: "empty",
 			data: "",
-			err:  errInvalidMDel,
+			err:  ErrInvalidMDel,
 		},
 		{
 			name: "HD-missing-lf",
 			data: "HD  \r",
-			err:  errInvalidMDel,
+			err:  ErrInvalidMDel,
 		},
 		{
 			name: "HD",
 			data: "HD\r\n",
 			resp: mdelResponse{
-				responseType: mdelResponseTypeHD,
+				responseType: MDelResponseTypeHD,
 			},
 		},
 		{
 			name: "NF",
 			data: "NF\r\n",
 			resp: mdelResponse{
-				responseType: mdelResponseTypeNF,
+				responseType: MDelResponseTypeNF,
 			},
 		},
 		{
 			name: "EX",
 			data: "EX\r\n",
 			resp: mdelResponse{
-				responseType: mdelResponseTypeEX,
+				responseType: MDelResponseTypeEX,
 			},
 		},
 		{
 			name: "invalid-prefix",
 			data: "OK\r\n",
-			err:  errInvalidMDel,
+			err:  ErrInvalidMDel,
 		},
 	}
 	for _, e := range table {
@@ -291,14 +291,14 @@ func TestParser_Multi_MGet_HD_First(t *testing.T) {
 
 	resp, err := p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeHD,
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeHD,
 	}, resp)
 
 	resp, err = p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeEN,
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeEN,
 	}, resp)
 }
 
@@ -307,14 +307,14 @@ func TestParser_Multi_MGet_EN_First(t *testing.T) {
 
 	resp, err := p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeEN,
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeEN,
 	}, resp)
 
 	resp, err = p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeHD,
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeHD,
 	}, resp)
 }
 
@@ -323,17 +323,17 @@ func TestParser_Multi_MGet_VA_First(t *testing.T) {
 
 	resp, err := p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeVA,
-		data:         []byte("AAAA"),
-		flags:        flagW,
-		cas:          55,
+	assert.Equal(t, MGetResponse{
+		Type:  MGetResponseTypeVA,
+		Data:  []byte("AAAA"),
+		Flags: MGetFlagW,
+		CAS:   55,
 	}, resp)
 
 	resp, err = p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeHD,
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeHD,
 	}, resp)
 }
 
@@ -342,13 +342,13 @@ func TestParser_Multi_MGet_Server_Error_First(t *testing.T) {
 
 	resp, err := p.readMGet()
 	assert.Equal(t, NewServerError("some msg"), err)
-	assert.Equal(t, mgetResponse{}, resp)
+	assert.Equal(t, MGetResponse{}, resp)
 
 	resp, err = p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeHD,
-		cas:          55,
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeHD,
+		CAS:  55,
 	}, resp)
 }
 
@@ -357,18 +357,18 @@ func TestParser_Multi_MGet_2_VA(t *testing.T) {
 
 	resp, err := p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeVA,
-		data:         []byte("565"),
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("565"),
 	}, resp)
 
 	resp, err = p.readMGet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, mgetResponse{
-		responseType: mgetResponseTypeVA,
-		data:         []byte("XXXX"),
-		cas:          33,
-		flags:        flagW,
+	assert.Equal(t, MGetResponse{
+		Type:  MGetResponseTypeVA,
+		Data:  []byte("XXXX"),
+		CAS:   33,
+		Flags: MGetFlagW,
 	}, resp)
 }
 
@@ -377,14 +377,14 @@ func TestParser_Multi_MSet_HD_First(t *testing.T) {
 
 	resp, err := p.readMSet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, msetResponse{
-		responseType: msetResponseTypeHD,
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
 	}, resp)
 
 	resp, err = p.readMSet()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, msetResponse{
-		responseType: msetResponseTypeNS,
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeNS,
 	}, resp)
 }
 
@@ -394,12 +394,12 @@ func TestParser_Multi_MDel_HD_First(t *testing.T) {
 	resp, err := p.readMDel()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, mdelResponse{
-		responseType: mdelResponseTypeHD,
+		responseType: MDelResponseTypeHD,
 	}, resp)
 
 	resp, err = p.readMDel()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, mdelResponse{
-		responseType: mdelResponseTypeNF,
+		responseType: MDelResponseTypeNF,
 	}, resp)
 }
