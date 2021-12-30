@@ -23,12 +23,14 @@ type MGetOptions struct {
 // MSetOptions ...
 type MSetOptions struct {
 	CAS uint64
+	TTL uint32
 }
 
 // MDelOptions ...
 type MDelOptions struct {
 	CAS uint64
 	I   bool
+	TTL uint32 // only apply if I = true
 }
 
 func freeCommandData(cmd *commandData) {
@@ -92,6 +94,11 @@ func (b *cmdBuilder) addMSet(key string, data []byte, opts MSetOptions) {
 		b.cmd.data = appendNumber(b.cmd.data, opts.CAS)
 	}
 
+	if opts.TTL > 0 {
+		b.cmd.data = append(b.cmd.data, " T"...)
+		b.cmd.data = appendNumber(b.cmd.data, uint64(opts.TTL))
+	}
+
 	b.cmd.data = append(b.cmd.data, "\r\n"...)
 
 	b.cmd.data = append(b.cmd.data, data...)
@@ -111,6 +118,10 @@ func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
 
 	if opts.I {
 		b.cmd.data = append(b.cmd.data, " I"...)
+		if opts.TTL > 0 {
+			b.cmd.data = append(b.cmd.data, " T"...)
+			b.cmd.data = appendNumber(b.cmd.data, uint64(opts.TTL))
+		}
 	}
 
 	b.cmd.data = append(b.cmd.data, "\r\n"...)

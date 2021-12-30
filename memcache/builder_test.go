@@ -63,6 +63,16 @@ func TestBuilder_AddMSet_WithCAS(t *testing.T) {
 	assert.Equal(t, "ms some:key 10 C1234\r\nSOME-VALUE\r\n", string(b.getCmd().data))
 }
 
+func TestBuilder_AddMSet_With_TTL(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMSet("some:key", []byte("SOME-VALUE"), MSetOptions{
+		TTL: 23,
+	})
+
+	assert.Equal(t, 1, b.getCmd().cmdCount)
+	assert.Equal(t, "ms some:key 10 T23\r\nSOME-VALUE\r\n", string(b.getCmd().data))
+}
+
 func TestBuilder_AddMDel(t *testing.T) {
 	b := newCmdBuilder()
 	b.addMDel("some:key", MDelOptions{})
@@ -93,6 +103,22 @@ func TestBuilder_AddMDel_With_CAS_And_I(t *testing.T) {
 
 	assert.Equal(t, 1, b.getCmd().cmdCount)
 	assert.Equal(t, "md some:key C234 I\r\n", string(b.getCmd().data))
+}
+
+func TestBuilder_AddMDel_With_I_And_TTL(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMDel("some:key", MDelOptions{I: true, TTL: 23})
+
+	assert.Equal(t, 1, b.getCmd().cmdCount)
+	assert.Equal(t, "md some:key I T23\r\n", string(b.getCmd().data))
+}
+
+func TestBuilder_AddMDel_With_Only_TTL(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMDel("some:key", MDelOptions{TTL: 23})
+
+	assert.Equal(t, 1, b.getCmd().cmdCount)
+	assert.Equal(t, "md some:key\r\n", string(b.getCmd().data))
 }
 
 func Benchmark_AddMGet(b *testing.B) {
