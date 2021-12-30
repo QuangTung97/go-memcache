@@ -212,6 +212,7 @@ func (s *sender) replyErrorToCmdInTmpBuf(err error) {
 
 func (s *sender) setLastErrorAndClose(err error) {
 	s.lastErr = err
+	s.ncErrorCond.Signal()
 	_ = s.nc.closer.Close()
 }
 
@@ -301,6 +302,8 @@ func (s *sender) setNetConnError(err error) {
 	s.ncMut.Lock()
 	s.lastErr = err
 	s.ncMut.Unlock()
+
+	s.ncErrorCond.Signal()
 }
 
 func (s *sender) resetNetConn(nc netConn) {
@@ -319,6 +322,8 @@ func (s *sender) closeNetConn() error {
 	s.lastErr = ErrConnClosed
 
 	s.ncMut.Unlock()
+
+	s.ncErrorCond.Signal()
 
 	return err
 }

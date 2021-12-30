@@ -287,9 +287,10 @@ func Benchmark_Pipeline_Multi_Threads(b *testing.B) {
 			go func() {
 				defer wg.Done()
 
-				const batchSize = 100
+				const batchSize = 40
+				const loopCount = 100000 / batchSize
 
-				for m := 0; m < 100000/batchSize; m++ {
+				for loop := 0; loop < loopCount; loop++ {
 					p := c.Pipeline()
 
 					for i := 0; i < batchSize; i++ {

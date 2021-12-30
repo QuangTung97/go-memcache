@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
@@ -72,4 +73,37 @@ func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
 
 	assert.Equal(t, nil, cmd3.lastErr)
 	assert.Equal(t, "HD 100\r\n", string(cmd3.data))
+}
+
+func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_Again(t *testing.T) {
+	writer1 := &FlushWriterMock{}
+	reader1 := &readCloserInterfaceMock{}
+
+	c := newCoreConnection(netConn{
+		writer: writer1,
+		reader: reader1,
+	})
+
+	writer1.WriteFunc = func(p []byte) (int, error) { return len(p), nil }
+	writer1.FlushFunc = func() error { return nil }
+
+	reader1.ReadFunc = func(p []byte) (int, error) {
+		if len(reader1.ReadCalls()) > 1 {
+			time.Sleep(24 * time.Hour)
+		}
+		data := "VA 4\r\nABCD\r\nHD\r\n"
+		copy(p, data)
+		return len(data), nil
+	}
+
+	cmd1 := newCommandFromString("mg key01 v\r\n")
+	cmd2 := newCommandFromString("mg key02 v\r\n")
+	c.publish(cmd1)
+	c.publish(cmd2)
+
+	cmd1.waitCompleted()
+	cmd2.waitCompleted()
+
+	assert.Equal(t, "VA 4\r\nABCD\r\n", string(cmd1.data))
+	assert.Equal(t, "HD\r\n", string(cmd2.data))
 }

@@ -80,7 +80,6 @@ func (c *coreConnection) recvCommands() {
 func (c *coreConnection) recvSingleCommand() error {
 	responseCount := 0
 
-ReadData:
 	for {
 		cmdLen := c.cmdList.readIfExhausted()
 		if cmdLen == 0 {
@@ -89,38 +88,36 @@ ReadData:
 
 		current := c.cmdList.current()
 
-		n, err := current.reader.Read(c.msgData)
-		if err != nil {
-			return err
-		}
-
-		if current.resetReader {
-			current.resetReader = false
-			c.responseReader.reset()
-		}
-
-		c.responseReader.recv(c.msgData[:n])
-
-		for {
-			size, ok := c.responseReader.getNext()
-			if !ok {
-				continue ReadData
-			}
+		// Read from response reader
+		size, ok := c.responseReader.getNext()
+		if !ok {
 			if c.responseReader.hasError() != nil {
 				return c.responseReader.hasError() // TODO
 			}
 
-			c.responseReader.readData(c.tmpData[:size])
-
-			if responseCount == 0 {
-				current.data = current.data[:0] // clear command data
+			n, err := current.reader.Read(c.msgData)
+			if err != nil {
+				return err
 			}
-			current.data = append(current.data, c.tmpData[:size]...) // need optimize??
-			responseCount++
 
-			if responseCount < current.cmdCount {
-				continue
+			if current.resetReader {
+				current.resetReader = false
+				c.responseReader.reset()
 			}
+
+			c.responseReader.recv(c.msgData[:n])
+			continue
+		}
+
+		c.responseReader.readData(c.tmpData[:size])
+
+		if responseCount == 0 {
+			current.data = current.data[:0] // clear command data
+		}
+		current.data = append(current.data, c.tmpData[:size]...) // need optimize??
+		responseCount++
+
+		if responseCount >= current.cmdCount {
 			return nil
 		}
 	}
