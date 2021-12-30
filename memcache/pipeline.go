@@ -10,16 +10,15 @@ type pipelineCmd struct {
 	cmdType   commandType
 	resp      interface{}
 	err       error
+
+	isRead bool
 }
 
 // Pipeline ...
 type Pipeline struct {
 	builder cmdBuilder
 
-	runningCmdMap map[int]*pipelineCmd
-	nextKey       int
-
-	currentCmdKeys []int
+	currentCmdList []*pipelineCmd
 
 	c *conn
 }
@@ -28,9 +27,7 @@ type Pipeline struct {
 func (c *Client) Pipeline() *Pipeline {
 	p := &Pipeline{
 		c:              c.getNextConn(),
-		runningCmdMap:  map[int]*pipelineCmd{},
-		currentCmdKeys: make([]int, 0, 32),
-		nextKey:        0,
+		currentCmdList: make([]*pipelineCmd, 0, 32),
 	}
 	initCmdBuilder(&p.builder)
 	return p
@@ -43,9 +40,7 @@ func (p *Pipeline) waitAndParseCmdData() {
 	var ps parser
 	initParser(&ps, currentCmd.data)
 
-	for _, key := range p.currentCmdKeys {
-		cmd := p.runningCmdMap[key]
-
+	for _, cmd := range p.currentCmdList {
 		if currentCmd.lastErr != nil {
 			cmd.err = currentCmd.lastErr
 			continue
@@ -66,7 +61,12 @@ func (p *Pipeline) waitAndParseCmdData() {
 		}
 	}
 
-	p.currentCmdKeys = p.currentCmdKeys[:0]
+	// clear currentCmdList
+	for i := range p.currentCmdList {
+		p.currentCmdList[i] = nil
+	}
+	p.currentCmdList = p.currentCmdList[:0]
+
 	freeCommandData(currentCmd)
 }
 
@@ -78,9 +78,8 @@ func (p *Pipeline) pushAndWaitImpl() {
 	p.c.pushCommand(p.builder.getCmd())
 
 	// Set all of published = true
-	for _, key := range p.currentCmdKeys {
-		c := p.runningCmdMap[key]
-		c.published = true
+	for _, cmd := range p.currentCmdList {
+		cmd.published = true
 	}
 
 	p.waitAndParseCmdData()
@@ -94,45 +93,38 @@ func (p *Pipeline) pushAndWaitResponses(cmd *pipelineCmd) {
 	p.resetCmdBuilder()
 }
 
-func (p *Pipeline) addCommand(cmdType commandType) int {
+func (p *Pipeline) addCommand(cmdType commandType) *pipelineCmd {
 	cmd := &pipelineCmd{
 		cmdType: cmdType,
 	}
-	p.nextKey++
-	keyIndex := p.nextKey
-
-	p.currentCmdKeys = append(p.currentCmdKeys, keyIndex)
-
-	p.runningCmdMap[keyIndex] = cmd
-
-	return keyIndex
+	p.currentCmdList = append(p.currentCmdList, cmd)
+	return cmd
 }
 
 // Finish ...
 func (p *Pipeline) Finish() {
-	if len(p.currentCmdKeys) > 0 {
+	if len(p.currentCmdList) > 0 {
 		p.pushAndWaitImpl()
 	}
 }
 
-func (p *Pipeline) getCommand(keyIndex int) (*pipelineCmd, error) {
-	cmd, ok := p.runningCmdMap[keyIndex]
-	if !ok {
-		return nil, ErrAlreadyGotten
+func (p *Pipeline) pushAndWaitIfNotRead(cmd *pipelineCmd) error {
+	if cmd.isRead {
+		return ErrAlreadyGotten
 	}
+	cmd.isRead = true
 	p.pushAndWaitResponses(cmd)
-	delete(p.runningCmdMap, keyIndex)
-	return cmd, nil
+	return nil
 }
 
 // MGet ...
 func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, error) {
-	keyIndex := p.addCommand(commandTypeMGet)
+	cmd := p.addCommand(commandTypeMGet)
 
 	p.builder.addMGet(key, opts)
 
 	return func() (MGetResponse, error) {
-		cmd, err := p.getCommand(keyIndex)
+		err := p.pushAndWaitIfNotRead(cmd)
 		if err != nil {
 			return MGetResponse{}, err
 		}
@@ -146,12 +138,12 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 
 // MSet ...
 func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSetResponse, error) {
-	keyIndex := p.addCommand(commandTypeMSet)
+	cmd := p.addCommand(commandTypeMSet)
 
 	p.builder.addMSet(key, value, opts)
 
 	return func() (MSetResponse, error) {
-		cmd, err := p.getCommand(keyIndex)
+		err := p.pushAndWaitIfNotRead(cmd)
 		if err != nil {
 			return MSetResponse{}, err
 		}
@@ -165,12 +157,12 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 
 // MDel ...
 func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, error) {
-	keyIndex := p.addCommand(commandTypeMDel)
+	cmd := p.addCommand(commandTypeMDel)
 
 	p.builder.addMDel(key, opts)
 
 	return func() (MDelResponse, error) {
-		cmd, err := p.getCommand(keyIndex)
+		err := p.pushAndWaitIfNotRead(cmd)
 		if err != nil {
 			return MDelResponse{}, err
 		}
