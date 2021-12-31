@@ -24,7 +24,9 @@ func netDialNewConn(addr string) (netConn, error) {
 	}, nil
 }
 
-func newConn(addr string) (*conn, error) {
+func newConn(addr string, options ...Option) (*conn, error) {
+	opts := computeOptions(options...)
+
 	nc, err := netDialNewConn(addr)
 	if err != nil {
 		return nil, err
@@ -43,7 +45,7 @@ func newConn(addr string) (*conn, error) {
 
 			nc, err := netDialNewConn(addr)
 			if err != nil {
-				time.Sleep(20 * time.Second)
+				time.Sleep(opts.retryDuration)
 				continue
 			}
 

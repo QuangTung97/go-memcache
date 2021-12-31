@@ -298,9 +298,11 @@ func (s *sender) waitForError() {
 	s.ncMut.Unlock()
 }
 
-func (s *sender) setNetConnError(err error) {
+func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
 	s.ncMut.Lock()
-	s.lastErr = err
+	if s.nc.reader == prevReader {
+		s.lastErr = err
+	}
 	s.ncMut.Unlock()
 
 	s.ncErrorCond.Signal()

@@ -12,7 +12,7 @@ type Client struct {
 }
 
 // New ...
-func New(addr string, numConns int) (*Client, error) {
+func New(addr string, numConns int, options ...Option) (*Client, error) {
 	if numConns <= 0 {
 		return nil, errors.New("numConns must > 0")
 	}
@@ -20,7 +20,7 @@ func New(addr string, numConns int) (*Client, error) {
 	conns := make([]*conn, 0, numConns)
 
 	for i := 0; i < numConns; i++ {
-		c, err := newConn(addr)
+		c, err := newConn(addr, options...)
 		if err != nil {
 			return nil, err
 		}

@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
+	"time"
 )
 
 func pipelineFlushAll(p *Pipeline) {
@@ -178,7 +179,7 @@ func TestPipeline_Multiple_Times(t *testing.T) {
 }
 
 func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
-	c, err := New("localhost:11211", 1)
+	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
 	assert.Equal(t, nil, err)
 
 	p := c.Pipeline()

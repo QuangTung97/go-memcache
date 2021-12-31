@@ -68,8 +68,9 @@ func (c *coreConnection) recvCommands() {
 			return
 		}
 		if err != nil {
-			_ = c.cmdList.current().reader.Close()
-			c.sender.setNetConnError(err)
+			reader := c.cmdList.current().reader
+			c.sender.setNetConnError(err, reader)
+			_ = reader.Close()
 		}
 		c.cmdList.current().setCompleted(err)
 		c.cmdList.next()
