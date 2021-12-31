@@ -23,6 +23,8 @@ jobs:
         run: make lint
       - name: Test
         run: make test
+      - name: Test Race
+        run: make test-race
       - name: Benchmark
         run: make benchmark
       - name: Convert coverage.out to coverage.lcov
