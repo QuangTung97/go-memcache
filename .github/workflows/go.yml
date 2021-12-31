@@ -10,6 +10,8 @@ jobs:
     services:
       memcached:
         image: memcached
+        ports:
+          - 11211:11211
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
