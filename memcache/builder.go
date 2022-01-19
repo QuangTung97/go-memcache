@@ -29,7 +29,7 @@ type MSetOptions struct {
 // MDelOptions ...
 type MDelOptions struct {
 	CAS uint64
-	I   bool
+	I   bool   // set as stale instead of delete completely
 	TTL uint32 // only apply if I = true
 }
 
