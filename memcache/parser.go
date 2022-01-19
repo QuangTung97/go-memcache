@@ -14,6 +14,7 @@ func initParser(p *parser, data []byte) {
 type MGetResponseType int
 
 var serverErrorPrefix = []byte("SERVER_ERROR")
+var clientErrorPrefix = []byte("CLIENT_ERROR")
 
 const (
 	// MGetResponseTypeVA ...
@@ -88,6 +89,9 @@ var ErrInvalidMSet = ErrBrokenPipe{reason: "can not parse mset response"}
 
 // ErrInvalidMDel ...
 var ErrInvalidMDel = ErrBrokenPipe{reason: "can not parse mdel response"}
+
+// ErrInvalidResponse ...
+var ErrInvalidResponse = ErrBrokenPipe{reason: "can not parse response"}
 
 func (p *parser) findCRLF(index int) int {
 	for i := index + 1; i < len(p.data); i++ {
@@ -224,11 +228,19 @@ func (p *parser) readMGetVA() (MGetResponse, error) {
 	return resp, nil
 }
 
-func (p *parser) readServerError() error {
+type errorType int
+
+const (
+	errorTypeNone errorType = iota
+	errorTypeServer
+	errorTypeClient
+)
+
+func (p *parser) readError(errType errorType) error {
 	index := len(serverErrorPrefix)
 	crlfIndex := p.findCRLF(index + 1)
 	if crlfIndex < 0 {
-		return ErrInvalidMGet
+		return ErrInvalidResponse
 	}
 
 	data := make([]byte, crlfIndex-2-index-1)
@@ -236,12 +248,27 @@ func (p *parser) readServerError() error {
 
 	p.skipData(crlfIndex)
 
-	return NewServerError(string(data))
+	if errType == errorTypeServer {
+		return NewServerError(string(data))
+	}
+	return NewClientError(string(data))
 }
 
-func (p *parser) isServerErrorPrefix() bool {
-	return p.prefixEqual('S', 'E') && len(p.data) > len(serverErrorPrefix) &&
-		bytes.Equal(p.data[:len(serverErrorPrefix)], serverErrorPrefix)
+func isBytesEqual(data []byte, err []byte) bool {
+	return len(data) > len(err) && bytes.Equal(data[:len(err)], err)
+}
+
+func (p *parser) isErrorPrefix() errorType {
+	if p.prefixEqual('S', 'E') {
+		if isBytesEqual(p.data, serverErrorPrefix) {
+			return errorTypeServer
+		}
+	} else if p.prefixEqual('C', 'L') {
+		if isBytesEqual(p.data, clientErrorPrefix) {
+			return errorTypeClient
+		}
+	}
+	return errorTypeNone
 }
 
 func (p *parser) readMGet() (MGetResponse, error) {
@@ -263,8 +290,8 @@ func (p *parser) readMGet() (MGetResponse, error) {
 		return p.readMGetVA()
 	}
 
-	if p.isServerErrorPrefix() {
-		return MGetResponse{}, p.readServerError()
+	if errType := p.isErrorPrefix(); errType != errorTypeNone {
+		return MGetResponse{}, p.readError(errType)
 	}
 
 	return MGetResponse{}, ErrInvalidMGet
@@ -301,6 +328,10 @@ func (p *parser) readMSet() (MSetResponse, error) {
 		return p.readMSetWithCRLF(MSetResponseTypeNF)
 	}
 
+	if errType := p.isErrorPrefix(); errType != errorTypeNone {
+		return MSetResponse{}, p.readError(errType)
+	}
+
 	return MSetResponse{}, ErrInvalidMSet
 }
 
@@ -330,5 +361,10 @@ func (p *parser) readMDel() (MDelResponse, error) {
 	if p.prefixEqual('E', 'X') {
 		return p.readMDelWithCRLF(MDelResponseTypeEX)
 	}
+
+	if errType := p.isErrorPrefix(); errType != errorTypeNone {
+		return MDelResponse{}, p.readError(errType)
+	}
+
 	return MDelResponse{}, ErrInvalidMDel
 }

@@ -32,3 +32,17 @@ func (e ErrServerError) Error() string {
 func NewServerError(msg string) error {
 	return ErrServerError{Message: msg}
 }
+
+// ErrClientError ...
+type ErrClientError struct {
+	Message string
+}
+
+func (e ErrClientError) Error() string {
+	return fmt.Sprintf("client error: %s", e.Message)
+}
+
+// NewClientError ...
+func NewClientError(msg string) error {
+	return ErrClientError{Message: msg}
+}

@@ -157,7 +157,7 @@ func TestParser_Read_MGet(t *testing.T) {
 		{
 			name: "server-error-missing-lf",
 			data: "SERVER_ERROR msg01\r",
-			err:  ErrInvalidMGet,
+			err:  ErrInvalidResponse,
 		},
 	}
 
@@ -402,4 +402,32 @@ func TestParser_Multi_MDel_HD_First(t *testing.T) {
 	assert.Equal(t, MDelResponse{
 		Type: MDelResponseTypeNF,
 	}, resp)
+}
+
+func TestParser_Server_Error_MGet(t *testing.T) {
+	p := newParserStr("SERVER_ERROR some error\r\n")
+	resp, err := p.readMGet()
+	assert.Equal(t, ErrServerError{Message: "some error"}, err)
+	assert.Equal(t, MGetResponse{}, resp)
+}
+
+func TestParser_Client_Error_MGet(t *testing.T) {
+	p := newParserStr("CLIENT_ERROR some error\r\n")
+	resp, err := p.readMGet()
+	assert.Equal(t, ErrClientError{Message: "some error"}, err)
+	assert.Equal(t, MGetResponse{}, resp)
+}
+
+func TestParser_Server_Error_MSet(t *testing.T) {
+	p := newParserStr("SERVER_ERROR some error\r\n")
+	resp, err := p.readMSet()
+	assert.Equal(t, ErrServerError{Message: "some error"}, err)
+	assert.Equal(t, MSetResponse{}, resp)
+}
+
+func TestParser_Server_Error_MDel(t *testing.T) {
+	p := newParserStr("SERVER_ERROR some error\r\n")
+	resp, err := p.readMDel()
+	assert.Equal(t, ErrServerError{Message: "some error"}, err)
+	assert.Equal(t, MDelResponse{}, resp)
 }
