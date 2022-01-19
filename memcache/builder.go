@@ -127,6 +127,11 @@ func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
 	b.cmd.data = append(b.cmd.data, "\r\n"...)
 }
 
+func (b *cmdBuilder) addFlushAll() {
+	b.cmd.cmdCount++
+	b.cmd.data = append(b.cmd.data, "flush_all\r\n"...)
+}
+
 func (b *cmdBuilder) getCmd() *commandData {
 	return b.cmd
 }

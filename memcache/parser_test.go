@@ -431,3 +431,33 @@ func TestParser_Server_Error_MDel(t *testing.T) {
 	assert.Equal(t, ErrServerError{Message: "some error"}, err)
 	assert.Equal(t, MDelResponse{}, resp)
 }
+
+func TestParser_FlushAll(t *testing.T) {
+	p := newParserStr("OK\r\nHD\r\n")
+	err := p.readFlushAll()
+	assert.Equal(t, nil, err)
+
+	resp, err := p.readMSet()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, resp)
+}
+
+func TestParser_FlushAll_Missing_LF(t *testing.T) {
+	p := newParserStr("OK\r")
+	err := p.readFlushAll()
+	assert.Equal(t, ErrInvalidResponse, err)
+}
+
+func TestParser_FlushAll_Not_OK(t *testing.T) {
+	p := newParserStr("HD\r")
+	err := p.readFlushAll()
+	assert.Equal(t, ErrInvalidResponse, err)
+}
+
+func TestParser_FlushAll_Server_Error(t *testing.T) {
+	p := newParserStr("SERVER_ERROR some error\r\n")
+	err := p.readFlushAll()
+	assert.Equal(t, NewServerError("some error"), err)
+}

@@ -6,4 +6,5 @@ const (
 	commandTypeMGet commandType = iota + 1
 	commandTypeMSet
 	commandTypeMDel
+	commandTypeFlushAll
 )

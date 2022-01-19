@@ -201,6 +201,26 @@ func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
 	assert.Equal(t, ErrAlreadyGotten, err)
 }
 
+func TestPipeline_Flush_All(t *testing.T) {
+	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
+	assert.Equal(t, nil, err)
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	_, err = p.MSet("key01", []byte("some value"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	err = p.FlushAll()()
+	assert.Equal(t, nil, err)
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeEN,
+	}, resp)
+}
+
 func Benchmark_Pipeline_Single_Thread(b *testing.B) {
 	c, err := New("localhost:11211", 1)
 	if err != nil {

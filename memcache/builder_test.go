@@ -121,6 +121,14 @@ func TestBuilder_AddMDel_With_Only_TTL(t *testing.T) {
 	assert.Equal(t, "md some:key\r\n", string(b.getCmd().data))
 }
 
+func TestBuilder_AddFlushAll(t *testing.T) {
+	b := newCmdBuilder()
+	b.addFlushAll()
+
+	assert.Equal(t, 1, b.getCmd().cmdCount)
+	assert.Equal(t, "flush_all\r\n", string(b.getCmd().data))
+}
+
 func Benchmark_AddMGet(b *testing.B) {
 	builder := newCmdBuilder()
 	for n := 0; n < b.N; n++ {

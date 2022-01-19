@@ -368,3 +368,24 @@ func (p *parser) readMDel() (MDelResponse, error) {
 
 	return MDelResponse{}, ErrInvalidMDel
 }
+
+// flush_all
+
+func (p *parser) readFlushAllWithCRLF() error {
+	index := p.findCRLF(2)
+	if index < 0 {
+		return ErrInvalidResponse
+	}
+	p.skipData(index)
+	return nil
+}
+
+func (p *parser) readFlushAll() error {
+	if p.prefixEqual('O', 'K') {
+		return p.readFlushAllWithCRLF()
+	}
+	if errType := p.isErrorPrefix(); errType != errorTypeNone {
+		return p.readError(errType)
+	}
+	return ErrInvalidResponse
+}

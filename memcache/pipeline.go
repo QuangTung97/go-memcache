@@ -56,6 +56,9 @@ func (p *Pipeline) waitAndParseCmdData() {
 		case commandTypeMDel:
 			cmd.resp, cmd.err = ps.readMDel()
 
+		case commandTypeFlushAll:
+			cmd.err = ps.readFlushAll()
+
 		default:
 			panic("invalid cmd type")
 		}
@@ -171,5 +174,20 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 			return MDelResponse{}, cmd.err
 		}
 		return resp, nil
+	}
+}
+
+// FlushAll ...
+func (p *Pipeline) FlushAll() func() error {
+	cmd := p.addCommand(commandTypeFlushAll)
+
+	p.builder.addFlushAll()
+
+	return func() error {
+		err := p.pushAndWaitIfNotRead(cmd)
+		if err != nil {
+			return err
+		}
+		return cmd.err
 	}
 }
