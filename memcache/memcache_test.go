@@ -43,7 +43,7 @@ func (s *kvStore) randKey() string {
 	return keyFunc(rand.Intn(s.maxKey))
 }
 
-func (s *kvStore) getFromCache() {
+func (s *kvStore) mgetFromCache() {
 	p := s.client.Pipeline()
 	defer p.Finish()
 
@@ -113,6 +113,7 @@ func (s *kvStore) flushAll() {
 	}
 }
 
+//revive:disable:cognitive-complexity
 func consistentCacheSingleLoop(t *testing.T, client *Client) {
 	const numKeys = 3
 	const numReadThreads = 2
@@ -139,7 +140,7 @@ func consistentCacheSingleLoop(t *testing.T, client *Client) {
 			defer wg.Done()
 
 			for n := 0; n < numLoops; n++ {
-				s.getFromCache()
+				s.mgetFromCache()
 			}
 		}()
 	}
@@ -174,6 +175,8 @@ func consistentCacheSingleLoop(t *testing.T, client *Client) {
 		assert.Equal(t, version, num)
 	}
 }
+
+//revive:enable:cognitive-complexity
 
 func TestMemcache_Consistent_Cache(t *testing.T) {
 	client, err := New("localhost:11211", 2)
