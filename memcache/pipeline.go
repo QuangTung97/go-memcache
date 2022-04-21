@@ -14,7 +14,7 @@ type pipelineCmd struct {
 	isRead bool
 }
 
-// Pipeline ...
+// Pipeline should NOT be used concurrently
 type Pipeline struct {
 	builder cmdBuilder
 
@@ -88,12 +88,16 @@ func (p *Pipeline) pushAndWaitImpl() {
 	p.waitAndParseCmdData()
 }
 
+func (p *Pipeline) pushAndWaitAllCommands() {
+	p.pushAndWaitImpl()
+	p.resetCmdBuilder()
+}
+
 func (p *Pipeline) pushAndWaitResponses(cmd *pipelineCmd) {
 	if cmd.published {
 		return
 	}
-	p.pushAndWaitImpl()
-	p.resetCmdBuilder()
+	p.pushAndWaitAllCommands()
 }
 
 func (p *Pipeline) addCommand(cmdType commandType) *pipelineCmd {
@@ -175,6 +179,11 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 		}
 		return resp, nil
 	}
+}
+
+// Execute flush operations to memcached (interrupts pipelining)
+func (p *Pipeline) Execute() {
+	p.pushAndWaitAllCommands()
 }
 
 // FlushAll ...

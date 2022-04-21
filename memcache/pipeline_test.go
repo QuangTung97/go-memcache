@@ -221,6 +221,67 @@ func TestPipeline_Flush_All(t *testing.T) {
 	}, resp)
 }
 
+func TestPipeline_Execute(t *testing.T) {
+	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
+	assert.Equal(t, nil, err)
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	p.MSet("key01", []byte("some value 01"), MSetOptions{})
+	p.MSet("key02", []byte("some value 02"), MSetOptions{})
+	p.Execute()
+
+	another := c.Pipeline()
+	defer another.Finish()
+
+	resp, err := another.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 01"),
+	}, resp)
+
+	resp, err = another.MGet("key02", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 02"),
+	}, resp)
+}
+
+func TestPipeline_Execute_And_Get_On_The_Same_Pipeline(t *testing.T) {
+	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
+	assert.Equal(t, nil, err)
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	p.MSet("key01", []byte("some value 01"), MSetOptions{})
+	p.MSet("key02", []byte("some value 02"), MSetOptions{})
+	p.Execute()
+
+	p.MSet("key03", []byte("some value 03"), MSetOptions{})
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 01"),
+	}, resp)
+
+	resp, err = p.MGet("key03", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 03"),
+	}, resp)
+}
+
 func Benchmark_Pipeline_Single_Thread(b *testing.B) {
 	c, err := New("localhost:11211", 1)
 	if err != nil {
