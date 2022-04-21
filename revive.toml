@@ -22,6 +22,8 @@ enableAllRules = true
     Disabled = true
 [rule.unused-receiver]
     Disabled = true
+[rule.banned-characters]
+    Disabled = true
 
 # Rule tuning
 [rule.argument-limit]

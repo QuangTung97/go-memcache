@@ -94,7 +94,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 2)
-	assert.Equal(t, 4, s.sendBufMax)
+	assert.Equal(t, 4, s.send.maxLen)
 
 	const numRounds = 200000
 
@@ -273,4 +273,51 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	assert.Equal(t, []byte("mg key02 v\r\n"), cmdList[0].data)
 	assert.Same(t, reader2, cmdList[0].reader)
 	assert.Equal(t, true, cmdList[0].resetReader)
+}
+
+func TestSendBuffer(t *testing.T) {
+	var b sendBuffer
+	initSendBuffer(&b, 1)
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		b.push(newCommandFromString("mg key01 v\r\n"))
+	}()
+	go func() {
+		defer wg.Done()
+		b.push(newCommandFromString("mg key02 v\r\n"))
+	}()
+	go func() {
+		defer wg.Done()
+		b.push(newCommandFromString("mg key03 v\r\n"))
+	}()
+	go func() {
+		defer wg.Done()
+		b.push(newCommandFromString("mg key04 v\r\n"))
+	}()
+
+	time.Sleep(5 * time.Millisecond)
+
+	commands := map[string]struct{}{}
+
+	output := b.popAll(nil)
+	assert.Equal(t, 2, len(output))
+	commands[string(output[0].data)] = struct{}{}
+	commands[string(output[1].data)] = struct{}{}
+
+	wg.Wait()
+
+	output = b.popAll(nil)
+	assert.Equal(t, 2, len(output))
+	commands[string(output[0].data)] = struct{}{}
+	commands[string(output[1].data)] = struct{}{}
+
+	assert.Equal(t, map[string]struct{}{
+		"mg key01 v\r\n": {},
+		"mg key02 v\r\n": {},
+		"mg key03 v\r\n": {},
+		"mg key04 v\r\n": {},
+	}, commands)
 }

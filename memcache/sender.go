@@ -78,14 +78,46 @@ type sender struct {
 	ncErrorCond *sync.Cond
 	//---- end ncMut protection ----
 
-	//---- protected by sendBufMut -----
-	sendBuf      []*commandData
-	sendBufMax   int
-	sendBufMut   sync.Mutex
-	sendFullCond *sync.Cond
-	//---- end sendBufMut protection ---
+	send sendBuffer
+	recv recvBuffer
+}
 
-	recv *recvBuffer
+type sendBuffer struct {
+	buf    []*commandData
+	maxLen int
+	mut    sync.Mutex
+	cond   *sync.Cond
+}
+
+func initSendBuffer(b *sendBuffer, bufSizeLog int) {
+	maxSize := 1 << bufSizeLog
+	b.buf = make([]*commandData, 0, maxSize)
+	b.maxLen = maxSize
+
+	b.cond = sync.NewCond(&b.mut)
+}
+
+func (b *sendBuffer) popAll(output []*commandData) []*commandData {
+	b.mut.Lock()
+	output = append(output, b.buf...)
+	b.buf = clearCmdList(b.buf)
+	b.mut.Unlock()
+
+	b.cond.Broadcast()
+	return output
+}
+
+func (b *sendBuffer) push(cmd *commandData) (isLeader bool) {
+	b.mut.Lock()
+	for len(b.buf) >= b.maxLen {
+		b.cond.Wait()
+	}
+
+	prevLen := len(b.buf)
+	b.buf = append(b.buf, cmd)
+	b.mut.Unlock()
+
+	return prevLen == 0
 }
 
 type recvBuffer struct {
@@ -102,16 +134,13 @@ type recvBuffer struct {
 	recvCond *sync.Cond
 }
 
-func newRecvBuffer(sizeLog int) *recvBuffer {
-	b := &recvBuffer{
-		buf:   make([]*commandData, 1<<sizeLog),
-		mask:  1<<sizeLog - 1,
-		begin: 0,
-		end:   0,
-	}
+func initRecvBuffer(b *recvBuffer, sizeLog int) {
+	b.buf = make([]*commandData, 1<<sizeLog)
+	b.mask = 1<<sizeLog - 1
+	b.begin = 0
+	b.end = 0
 	b.sendCond = sync.NewCond(&b.mut)
 	b.recvCond = sync.NewCond(&b.mut)
-	return b
 }
 
 func (b *recvBuffer) push(cmdList []*commandData) {
@@ -181,18 +210,15 @@ type netConn struct {
 }
 
 func newSender(nc netConn, bufSizeLog int) *sender {
-	maxSize := 1 << bufSizeLog
 	s := &sender{
 		nc:      nc,
 		lastErr: nil,
-
-		sendBuf:    make([]*commandData, 0, maxSize),
-		sendBufMax: maxSize,
-
-		recv: newRecvBuffer(bufSizeLog),
 	}
+
+	initSendBuffer(&s.send, bufSizeLog)
+	initRecvBuffer(&s.recv, bufSizeLog)
+
 	s.ncErrorCond = sync.NewCond(&s.ncMut)
-	s.sendFullCond = sync.NewCond(&s.sendBufMut)
 	return s
 }
 
@@ -247,12 +273,7 @@ func (s *sender) writeAndFlush() error {
 func (s *sender) sendToWriter() {
 	s.ncMut.Lock()
 
-	s.sendBufMut.Lock()
-	s.tmpBuf = append(s.tmpBuf, s.sendBuf...)
-	s.sendBuf = clearCmdList(s.sendBuf)
-	s.sendBufMut.Unlock()
-
-	s.sendFullCond.Signal()
+	s.tmpBuf = s.send.popAll(s.tmpBuf)
 
 	err := s.writeAndFlush()
 	if err != nil {
@@ -268,18 +289,8 @@ func (s *sender) sendToWriter() {
 }
 
 func (s *sender) publish(cmd *commandData) {
-	var prevLen int
-
-	s.sendBufMut.Lock()
-	for len(s.sendBuf) >= s.sendBufMax {
-		s.sendFullCond.Wait()
-	}
-
-	prevLen = len(s.sendBuf)
-	s.sendBuf = append(s.sendBuf, cmd)
-	s.sendBufMut.Unlock()
-
-	if prevLen > 0 {
+	isLeader := s.send.push(cmd)
+	if !isLeader {
 		return
 	}
 
