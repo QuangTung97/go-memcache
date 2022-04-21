@@ -118,9 +118,6 @@ func (p *Pipeline) pushCommands() {
 	currentCmd := p.getBuilder().getCmd()
 	p.c.pushCommand(currentCmd)
 
-	sess := p.currentSession
-	sess.published = true
-
 	p.resetPipelineSession()
 }
 
