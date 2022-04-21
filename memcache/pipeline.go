@@ -5,44 +5,72 @@ import "errors"
 // ErrAlreadyGotten ...
 var ErrAlreadyGotten = errors.New("pipeline error: already gotten")
 
-type pipelineCmd struct {
+type pipelineSession struct {
 	published bool
-	cmdType   commandType
-	resp      interface{}
-	err       error
+	doWaited  bool
+
+	currentCmd     *commandData
+	currentCmdList []*pipelineCmd
+}
+
+type pipelineCmd struct {
+	sess *pipelineSession
+
+	cmdType commandType
+	resp    interface{}
+	err     error
 
 	isRead bool
 }
 
 // Pipeline should NOT be used concurrently
 type Pipeline struct {
-	builder cmdBuilder
-
-	currentCmdList []*pipelineCmd
+	builderInstance cmdBuilder
+	currentSession  *pipelineSession
 
 	c *clientConn
+}
+
+func newPipelineSession(currentCmd *commandData) *pipelineSession {
+	return &pipelineSession{
+		published: false,
+		doWaited:  false,
+
+		currentCmd:     currentCmd,
+		currentCmdList: make([]*pipelineCmd, 0, 32),
+	}
+}
+
+func newPipelineCmd(sess *pipelineSession, cmdType commandType) *pipelineCmd {
+	return &pipelineCmd{
+		sess:    sess,
+		cmdType: cmdType,
+	}
 }
 
 // Pipeline creates a pipeline
 func (c *Client) Pipeline() *Pipeline {
 	p := &Pipeline{
 		c:              c.getNextConn(),
-		currentCmdList: make([]*pipelineCmd, 0, 32),
+		currentSession: nil,
 	}
-	initCmdBuilder(&p.builder)
 	return p
 }
 
-func (p *Pipeline) waitAndParseCmdData() {
-	currentCmd := p.builder.getCmd()
-	currentCmd.waitCompleted()
+func (s *pipelineSession) waitAndParseCmdData() {
+	if s.doWaited {
+		return
+	}
+	s.doWaited = true
+
+	s.currentCmd.waitCompleted()
 
 	var ps parser
-	initParser(&ps, currentCmd.data)
+	initParser(&ps, s.currentCmd.data)
 
-	for _, cmd := range p.currentCmdList {
-		if currentCmd.lastErr != nil {
-			cmd.err = currentCmd.lastErr
+	for _, cmd := range s.currentCmdList {
+		if s.currentCmd.lastErr != nil {
+			cmd.err = s.currentCmd.lastErr
 			continue
 		}
 
@@ -65,53 +93,63 @@ func (p *Pipeline) waitAndParseCmdData() {
 	}
 
 	// clear currentCmdList
-	for i := range p.currentCmdList {
-		p.currentCmdList[i] = nil
+
+	freeCommandData(s.currentCmd)
+}
+
+func (p *Pipeline) getBuilder() *cmdBuilder {
+	return &p.builderInstance
+}
+
+func (p *Pipeline) resetPipelineSession() {
+	p.currentSession = nil
+}
+
+func (p *Pipeline) getCurrentSession() *pipelineSession {
+	if p.currentSession == nil {
+		initCmdBuilder(&p.builderInstance)
+		cmd := p.builderInstance.getCmd()
+		p.currentSession = newPipelineSession(cmd)
 	}
-	p.currentCmdList = p.currentCmdList[:0]
-
-	freeCommandData(currentCmd)
+	return p.currentSession
 }
 
-func (p *Pipeline) resetCmdBuilder() {
-	initCmdBuilder(&p.builder)
+func (p *Pipeline) pushCommands() {
+	currentCmd := p.getBuilder().getCmd()
+	p.c.pushCommand(currentCmd)
+
+	sess := p.currentSession
+	sess.published = true
+
+	p.resetPipelineSession()
 }
 
-func (p *Pipeline) pushAndWaitImpl() {
-	p.c.pushCommand(p.builder.getCmd())
-
-	// Set all of published = true
-	for _, cmd := range p.currentCmdList {
-		cmd.published = true
+func (p *Pipeline) pushCommandsIfNotPublished(sess *pipelineSession) {
+	if !sess.published {
+		sess.published = true
+		p.pushCommands()
 	}
-
-	p.waitAndParseCmdData()
-}
-
-func (p *Pipeline) pushAndWaitAllCommands() {
-	p.pushAndWaitImpl()
-	p.resetCmdBuilder()
 }
 
 func (p *Pipeline) pushAndWaitResponses(cmd *pipelineCmd) {
-	if cmd.published {
-		return
-	}
-	p.pushAndWaitAllCommands()
+	sess := cmd.sess
+	p.pushCommandsIfNotPublished(sess)
+	sess.waitAndParseCmdData()
 }
 
 func (p *Pipeline) addCommand(cmdType commandType) *pipelineCmd {
-	cmd := &pipelineCmd{
-		cmdType: cmdType,
-	}
-	p.currentCmdList = append(p.currentCmdList, cmd)
+	sess := p.getCurrentSession()
+	cmd := newPipelineCmd(sess, cmdType)
+	sess.currentCmdList = append(sess.currentCmdList, cmd)
 	return cmd
 }
 
 // Finish ...
 func (p *Pipeline) Finish() {
-	if len(p.currentCmdList) > 0 {
-		p.pushAndWaitImpl()
+	if p.currentSession != nil {
+		sess := p.currentSession
+		p.pushCommandsIfNotPublished(sess)
+		sess.waitAndParseCmdData()
 	}
 }
 
@@ -128,7 +166,7 @@ func (p *Pipeline) pushAndWaitIfNotRead(cmd *pipelineCmd) error {
 func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, error) {
 	cmd := p.addCommand(commandTypeMGet)
 
-	p.builder.addMGet(key, opts)
+	p.getBuilder().addMGet(key, opts)
 
 	return func() (MGetResponse, error) {
 		err := p.pushAndWaitIfNotRead(cmd)
@@ -147,7 +185,7 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSetResponse, error) {
 	cmd := p.addCommand(commandTypeMSet)
 
-	p.builder.addMSet(key, value, opts)
+	p.getBuilder().addMSet(key, value, opts)
 
 	return func() (MSetResponse, error) {
 		err := p.pushAndWaitIfNotRead(cmd)
@@ -166,7 +204,7 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, error) {
 	cmd := p.addCommand(commandTypeMDel)
 
-	p.builder.addMDel(key, opts)
+	p.getBuilder().addMDel(key, opts)
 
 	return func() (MDelResponse, error) {
 		err := p.pushAndWaitIfNotRead(cmd)
@@ -183,14 +221,16 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 
 // Execute flush operations to memcached (interrupts pipelining)
 func (p *Pipeline) Execute() {
-	p.pushAndWaitAllCommands()
+	if p.currentSession != nil {
+		p.pushCommandsIfNotPublished(p.currentSession)
+	}
 }
 
 // FlushAll ...
 func (p *Pipeline) FlushAll() func() error {
 	cmd := p.addCommand(commandTypeFlushAll)
 
-	p.builder.addFlushAll()
+	p.getBuilder().addFlushAll()
 
 	return func() error {
 		err := p.pushAndWaitIfNotRead(cmd)
