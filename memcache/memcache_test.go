@@ -189,4 +189,7 @@ func TestMemcache_Consistent_Cache(t *testing.T) {
 			return
 		}
 	}
+
+	err = client.Close()
+	assert.Equal(t, nil, err)
 }

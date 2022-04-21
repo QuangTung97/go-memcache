@@ -82,6 +82,9 @@ type sender struct {
 	recv recvBuffer
 }
 
+//----------------------------------
+// Send Buffer
+//----------------------------------
 type sendBuffer struct {
 	buf    []*commandData
 	maxLen int
@@ -120,6 +123,9 @@ func (b *sendBuffer) push(cmd *commandData) (isLeader bool) {
 	return prevLen == 0
 }
 
+//----------------------------------
+// Receiving Buffer
+//----------------------------------
 type recvBuffer struct {
 	buf []*commandData
 	mut sync.Mutex
@@ -148,6 +154,11 @@ func (b *recvBuffer) push(cmdList []*commandData) {
 
 	for len(cmdList) > 0 {
 		b.mut.Lock()
+
+		if b.closed {
+			b.mut.Unlock()
+			return
+		}
 
 		// Wait until: begin + max - end > 0
 		for b.begin+max <= b.end {

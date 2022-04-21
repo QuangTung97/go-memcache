@@ -275,7 +275,7 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	assert.Equal(t, true, cmdList[0].resetReader)
 }
 
-func TestSendBuffer(t *testing.T) {
+func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {
 	var b sendBuffer
 	initSendBuffer(&b, 1)
 
@@ -320,4 +320,24 @@ func TestSendBuffer(t *testing.T) {
 		"mg key03 v\r\n": {},
 		"mg key04 v\r\n": {},
 	}, commands)
+}
+
+func TestRecvBuffer__Push_When_Closed(t *testing.T) {
+	var b recvBuffer
+	initRecvBuffer(&b, 1)
+
+	b.push([]*commandData{
+		newCommandFromString("mg key01 v\r\n"),
+		newCommandFromString("mg key02 v\r\n"),
+	})
+
+	b.closeBuffer()
+
+	b.push([]*commandData{
+		newCommandFromString("mg key03 v\r\n"),
+	})
+
+	cmdList := make([]*commandData, 1024)
+	size := b.read(cmdList)
+	assert.Equal(t, 2, size)
 }

@@ -20,7 +20,7 @@ type Pipeline struct {
 
 	currentCmdList []*pipelineCmd
 
-	c *conn
+	c *clientConn
 }
 
 // Pipeline creates a pipeline

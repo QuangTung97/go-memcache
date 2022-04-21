@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func connFlushAll(c *conn) {
+func connFlushAll(c *clientConn) {
 	cmd := newCommandFromString("flush_all\r\n")
 	c.pushCommand(cmd)
 	cmd.waitCompleted()

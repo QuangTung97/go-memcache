@@ -3,10 +3,12 @@ package memcache
 import (
 	"bufio"
 	"net"
+	"sync"
 	"time"
 )
 
-type conn struct {
+type clientConn struct {
+	wg   sync.WaitGroup
 	core *coreConnection
 }
 
@@ -24,7 +26,7 @@ func netDialNewConn(addr string) (netConn, error) {
 	}, nil
 }
 
-func newConn(addr string, options ...Option) (*conn, error) {
+func newConn(addr string, options ...Option) (*clientConn, error) {
 	opts := computeOptions(options...)
 
 	nc, err := netDialNewConn(addr)
@@ -32,11 +34,14 @@ func newConn(addr string, options ...Option) (*conn, error) {
 		return nil, err
 	}
 
-	c := &conn{
+	c := &clientConn{
 		core: newCoreConnection(nc),
 	}
 
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
+
 		for {
 			c.core.waitForError()
 			if c.core.isShuttingDown() {
@@ -56,12 +61,16 @@ func newConn(addr string, options ...Option) (*conn, error) {
 	return c, nil
 }
 
-func (c *conn) pushCommand(cmd *commandData) {
+func (c *clientConn) pushCommand(cmd *commandData) {
 	c.core.publish(cmd)
 }
 
-func (c *conn) shutdown() error {
+func (c *clientConn) shutdown() error {
 	err := c.core.sender.closeNetConn()
 	c.core.shutdown()
 	return err
+}
+
+func (c *clientConn) waitCloseCompleted() {
+	c.wg.Wait()
 }
