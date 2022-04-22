@@ -52,6 +52,7 @@ func TestClient_Connection_Error_And_Retry(t *testing.T) {
 
 	c, err := New("localhost:11211", 1, WithRetryDuration(10*time.Millisecond))
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()

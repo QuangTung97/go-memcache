@@ -15,6 +15,10 @@ func connFlushAll(c *clientConn) {
 func TestConn_Simple_Get_Miss(t *testing.T) {
 	c, err := newConn("localhost:11211")
 	assert.Equal(t, nil, err)
+	defer func() {
+		_ = c.shutdown()
+		c.waitCloseCompleted()
+	}()
 
 	connFlushAll(c)
 
@@ -28,6 +32,10 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 	c, err := newConn("localhost:11211")
 	assert.Equal(t, nil, err)
+	defer func() {
+		_ = c.shutdown()
+		c.waitCloseCompleted()
+	}()
 
 	connFlushAll(c)
 
@@ -42,6 +50,10 @@ func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 func TestConn_Set_Get(t *testing.T) {
 	c, err := newConn("localhost:11211")
 	assert.Equal(t, nil, err)
+	defer func() {
+		_ = c.shutdown()
+		c.waitCloseCompleted()
+	}()
 
 	commands := []string{
 		"ms key01 4\r\nABCD\r\n",
@@ -75,4 +87,5 @@ func TestConn_Shutdown(t *testing.T) {
 
 	err = c.shutdown()
 	assert.Equal(t, nil, err)
+	c.waitCloseCompleted()
 }

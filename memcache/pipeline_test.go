@@ -23,6 +23,7 @@ func assertMGetEqual(t *testing.T, a, b MGetResponse) {
 func TestPipeline_Simple_MGet(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -41,6 +42,7 @@ func TestPipeline_Simple_MGet(t *testing.T) {
 func TestPipeline_Multi_MGet(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -78,6 +80,7 @@ func TestPipeline_Multi_MGet(t *testing.T) {
 func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -107,6 +110,7 @@ func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
 func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -135,6 +139,7 @@ func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
 func TestPipeline_MSet_Then_MDel_With_Invalidate_Then_MGet_Stale_Data(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -157,6 +162,7 @@ func TestPipeline_MSet_Then_MDel_With_Invalidate_Then_MGet_Stale_Data(t *testing
 func TestPipeline_Multiple_Times(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -181,6 +187,7 @@ func TestPipeline_Multiple_Times(t *testing.T) {
 func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
 	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -204,6 +211,7 @@ func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
 func TestPipeline_Flush_All(t *testing.T) {
 	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -224,6 +232,7 @@ func TestPipeline_Flush_All(t *testing.T) {
 func TestPipeline_Execute(t *testing.T) {
 	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -255,6 +264,7 @@ func TestPipeline_Execute(t *testing.T) {
 func TestPipeline_Execute_And_Get_On_The_Same_Pipeline(t *testing.T) {
 	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
 	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
 
 	p := c.Pipeline()
 	defer p.Finish()
@@ -287,6 +297,7 @@ func Benchmark_Pipeline_Single_Thread(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = c.Close() }()
 
 	connFlushAll(c.conns[0])
 
@@ -309,6 +320,7 @@ func Benchmark_Pipeline_Single_Thread_Batching_Set(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = c.Close() }()
 
 	connFlushAll(c.conns[0])
 
@@ -329,6 +341,7 @@ func Benchmark_Pipeline_Single_Thread_Batching_Get(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = c.Close() }()
 
 	const valueString = "some random string"
 
@@ -353,6 +366,7 @@ func Benchmark_Pipeline_Multi_Threads(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = c.Close() }()
 
 	const valueString = "some random string"
 	const threadCount = 4
