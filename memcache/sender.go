@@ -336,6 +336,8 @@ func (s *sender) resetNetConn(nc netConn) {
 	s.lastErr = nil
 	s.newNetConn = true
 	s.ncMut.Unlock()
+
+	s.ncErrorCond.Signal()
 }
 
 func (s *sender) closeNetConn() error {
