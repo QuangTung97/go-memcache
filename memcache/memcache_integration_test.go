@@ -83,3 +83,52 @@ func TestClient_Connection_Error_And_Retry(t *testing.T) {
 
 	assert.Equal(t, uint64(5), counter)
 }
+
+type connRecorder struct {
+	data []byte
+	net.Conn
+}
+
+func (c *connRecorder) Write(b []byte) (n int, err error) {
+	c.data = append(c.data, b...)
+	return c.Conn.Write(b)
+}
+
+func TestMemcache_PushData_To_Connection_Correctly(t *testing.T) {
+	var recorder *connRecorder
+	globalNetDial = func(network, address string) (net.Conn, error) {
+		conn, err := net.Dial(network, address)
+		if err != nil {
+			panic(err)
+		}
+		recorder = &connRecorder{
+			Conn: conn,
+		}
+		return recorder, nil
+	}
+	defer resetGlobalNetDial()
+
+	c, err := New("localhost:11211", 1, WithRetryDuration(10*time.Millisecond))
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	fn01 := p.MSet("key01", []byte("some value 01"), MSetOptions{})
+	fn02 := p.MGet("key01", MGetOptions{})
+
+	_, err = fn01()
+	assert.Equal(t, nil, err)
+
+	resp, err := fn02()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 01"),
+	}, resp)
+
+	assert.Equal(t, "flush_all\r\nms key01 13\r\nsome value 01\r\nmg key01 v\r\n", string(recorder.data))
+}
