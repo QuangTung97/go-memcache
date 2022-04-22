@@ -94,7 +94,7 @@ func (c *connRecorder) Write(b []byte) (n int, err error) {
 	return c.Conn.Write(b)
 }
 
-func TestMemcache_PushData_To_Connection_Correctly(t *testing.T) {
+func TestClient_PushData_To_Connection_Correctly(t *testing.T) {
 	var recorder *connRecorder
 	globalNetDial = func(network, address string) (net.Conn, error) {
 		conn, err := net.Dial(network, address)
@@ -108,7 +108,7 @@ func TestMemcache_PushData_To_Connection_Correctly(t *testing.T) {
 	}
 	defer resetGlobalNetDial()
 
-	c, err := New("localhost:11211", 1, WithRetryDuration(10*time.Millisecond))
+	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
 	defer func() { _ = c.Close() }()
 
@@ -131,4 +131,56 @@ func TestMemcache_PushData_To_Connection_Correctly(t *testing.T) {
 	}, resp)
 
 	assert.Equal(t, "flush_all\r\nms key01 13\r\nsome value 01\r\nmg key01 v\r\n", string(recorder.data))
+}
+
+func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
+	var recorder1 *connRecorder
+	var recorder2 *connRecorder
+
+	counter := 0
+	globalNetDial = func(network, address string) (net.Conn, error) {
+		counter++
+
+		conn, err := net.Dial(network, address)
+		if err != nil {
+			panic(err)
+		}
+
+		recorder := &connRecorder{
+			Conn: conn,
+		}
+		if counter == 1 {
+			recorder1 = recorder
+		} else {
+			recorder2 = recorder
+		}
+
+		return recorder, nil
+	}
+	defer resetGlobalNetDial()
+
+	c1, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c1.Close() }()
+
+	c2, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c2.Close() }()
+
+	assert.Equal(t, 2, counter)
+
+	p1 := c1.Pipeline()
+	defer p1.Finish()
+
+	p2 := c2.Pipeline()
+	defer p2.Finish()
+
+	p1.MSet("key01", []byte("some value 01"), MSetOptions{})
+	p2.MSet("key02", []byte("some value 02"), MSetOptions{})
+
+	p1.Execute()
+	p2.Execute()
+
+	assert.Equal(t, "ms key01 13\r\nsome value 01\r\n", string(recorder1.data))
+	assert.Equal(t, "ms key02 13\r\nsome value 02\r\n", string(recorder2.data))
 }
