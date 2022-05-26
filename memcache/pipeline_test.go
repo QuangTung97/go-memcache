@@ -439,6 +439,46 @@ func TestPipeline_MDel__Not_Found_And_Exists(t *testing.T) {
 	assert.Equal(t, MDelResponse{Type: MDelResponseTypeHD}, delResp)
 }
 
+func repeatBytes(c byte, n int) []byte {
+	result := make([]byte, n)
+	for i := range result {
+		result[i] = c
+	}
+	return result
+}
+
+func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	const headerSize = 56 // 8 * 7
+	const key = "key01"
+	const paddingSize = 1 + 2 // 1 null terminated key, 2 for \r\n data
+
+	const maxDataSize = 1024*1024 - headerSize - len(key) - paddingSize
+
+	setResp, err := p.MSet(key, repeatBytes('A', maxDataSize+1), MSetOptions{})()
+	assert.Equal(t, NewServerError("object too large for cache"), err)
+	assert.Equal(t, MSetResponse{}, setResp)
+
+	setResp, err = p.MSet(key, repeatBytes('A', maxDataSize), MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
+
+	getResp, err := p.MGet(key, MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: repeatBytes('A', maxDataSize),
+	}, getResp)
+}
+
 func TestValidateKeyFormat(t *testing.T) {
 	err := validateKeyFormat("\x00")
 	assert.Equal(t, ErrInvalidKeyFormat, err)
