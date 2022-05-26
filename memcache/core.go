@@ -44,6 +44,9 @@ func (c *coreConnection) isShuttingDown() bool {
 
 func (c *coreConnection) shutdown() {
 	atomic.StoreUint32(&c.shuttingDown, 1)
+}
+
+func (c *coreConnection) waitReceiverShutdown() {
 	c.wg.Wait()
 }
 

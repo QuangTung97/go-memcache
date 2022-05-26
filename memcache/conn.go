@@ -69,11 +69,12 @@ func (c *clientConn) pushCommand(cmd *commandData) {
 }
 
 func (c *clientConn) shutdown() error {
-	err := c.core.sender.closeNetConn()
 	c.core.shutdown()
+	err := c.core.sender.closeNetConn()
 	return err
 }
 
 func (c *clientConn) waitCloseCompleted() {
 	c.wg.Wait()
+	c.core.waitReceiverShutdown()
 }
