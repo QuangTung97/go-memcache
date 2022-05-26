@@ -398,6 +398,48 @@ func TestPipeline_MSet_With_Response_Type_EXISTS_And_NOT_FOUND(t *testing.T) {
 	assert.Equal(t, MSetResponse{Type: MSetResponseTypeNF}, setResp)
 }
 
+func TestPipeline_MDel__Not_Found_And_Exists(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	_, err = p.MSet("key01", []byte("value01"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	delResp, err := p.MDel("key01", MDelOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MDelResponse{Type: MDelResponseTypeHD}, delResp)
+
+	delResp, err = p.MDel("key01", MDelOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MDelResponse{Type: MDelResponseTypeNF}, delResp)
+
+	_, err = p.MSet("key01", []byte("value02"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	getResp, err := p.MGet("key01", MGetOptions{CAS: true})()
+	assert.Equal(t, nil, err)
+
+	delResp, err = p.MDel("key01", MDelOptions{CAS: getResp.CAS - 1})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MDelResponse{Type: MDelResponseTypeEX}, delResp)
+
+	// Get Again
+	getResp, err = p.MGet("key01", MGetOptions{CAS: true})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponseTypeVA, getResp.Type)
+
+	// Seem Memcached Is Broken??? Type Should Be HD
+	delResp, err = p.MDel("key01", MDelOptions{CAS: getResp.CAS})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MDelResponse{Type: MDelResponseTypeEX}, delResp)
+}
+
 func TestValidateKeyFormat(t *testing.T) {
 	err := validateKeyFormat("\x00")
 	assert.Equal(t, ErrInvalidKeyFormat, err)
