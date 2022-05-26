@@ -434,10 +434,9 @@ func TestPipeline_MDel__Not_Found_And_Exists(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, MGetResponseTypeVA, getResp.Type)
 
-	// Seem Memcached Is Broken??? Type Should Be HD
 	delResp, err = p.MDel("key01", MDelOptions{CAS: getResp.CAS})()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, MDelResponse{Type: MDelResponseTypeEX}, delResp)
+	assert.Equal(t, MDelResponse{Type: MDelResponseTypeHD}, delResp)
 }
 
 func TestValidateKeyFormat(t *testing.T) {
