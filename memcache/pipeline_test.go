@@ -348,6 +348,56 @@ func TestPipeline_MSet_MGet_MDel__Invalid_Key_Format(t *testing.T) {
 	}, getResp)
 }
 
+func TestPipeline_MSet_With_Response_Type_EXISTS_And_NOT_FOUND(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	setResp, err := p.MSet("key01", []byte("value01"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, setResp)
+
+	getResp, err := p.MGet("key01", MGetOptions{CAS: true})()
+	assert.Equal(t, nil, err)
+
+	cas := getResp.CAS
+	getResp.CAS = 100
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("value01"),
+		CAS:  100,
+	}, getResp)
+	assert.Greater(t, cas, uint64(0))
+
+	setResp, err = p.MSet("key01", []byte("value02"), MSetOptions{CAS: cas - 1})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeEX}, setResp)
+
+	setResp, err = p.MSet("key01", []byte("value03"), MSetOptions{CAS: cas})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
+
+	// Get Again
+	getResp, err = p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("value03"),
+	}, getResp)
+
+	// Set With Not Existed Key
+	setResp, err = p.MSet("key02", []byte("value04"), MSetOptions{CAS: 123})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeNF}, setResp)
+}
+
 func TestValidateKeyFormat(t *testing.T) {
 	err := validateKeyFormat("\x00")
 	assert.Equal(t, ErrInvalidKeyFormat, err)
