@@ -1,6 +1,9 @@
 package memcache
 
-import "errors"
+import (
+	"errors"
+	"unicode"
+)
 
 // ErrAlreadyGotten ...
 var ErrAlreadyGotten = errors.New("pipeline error: already gotten")
@@ -161,6 +164,12 @@ func (p *Pipeline) pushAndWaitIfNotRead(cmd *pipelineCmd) error {
 
 // MGet ...
 func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, error) {
+	if err := validateKeyFormat(key); err != nil {
+		return func() (MGetResponse, error) {
+			return MGetResponse{}, err
+		}
+	}
+
 	cmd := p.addCommand(commandTypeMGet)
 
 	p.getBuilder().addMGet(key, opts)
@@ -174,12 +183,18 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 		if !ok {
 			return MGetResponse{}, cmd.err
 		}
-		return resp, nil
+		return resp, cmd.err
 	}
 }
 
 // MSet ...
 func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSetResponse, error) {
+	if err := validateKeyFormat(key); err != nil {
+		return func() (MSetResponse, error) {
+			return MSetResponse{}, err
+		}
+	}
+
 	cmd := p.addCommand(commandTypeMSet)
 
 	p.getBuilder().addMSet(key, value, opts)
@@ -193,12 +208,18 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 		if !ok {
 			return MSetResponse{}, cmd.err
 		}
-		return resp, nil
+		return resp, cmd.err
 	}
 }
 
 // MDel ...
 func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, error) {
+	if err := validateKeyFormat(key); err != nil {
+		return func() (MDelResponse, error) {
+			return MDelResponse{}, err
+		}
+	}
+
 	cmd := p.addCommand(commandTypeMDel)
 
 	p.getBuilder().addMDel(key, opts)
@@ -212,7 +233,7 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 		if !ok {
 			return MDelResponse{}, cmd.err
 		}
-		return resp, nil
+		return resp, cmd.err
 	}
 }
 
@@ -236,4 +257,16 @@ func (p *Pipeline) FlushAll() func() error {
 		}
 		return cmd.err
 	}
+}
+
+// ErrInvalidKeyFormat ...
+var ErrInvalidKeyFormat = errors.New("memcached: invalid key format")
+
+func validateKeyFormat(key string) error {
+	for _, r := range key {
+		if unicode.IsControl(r) {
+			return ErrInvalidKeyFormat
+		}
+	}
+	return nil
 }

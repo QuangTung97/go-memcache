@@ -292,6 +292,73 @@ func TestPipeline_Execute_And_Get_On_The_Same_Pipeline(t *testing.T) {
 	}, resp)
 }
 
+func TestPipeline_MSet_MGet_MDel__Invalid_Key_Format(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	const key = "abcd\x00"
+
+	resp, err := p.MSet(key, []byte("Hello"), MSetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+	assert.Equal(t, MSetResponse{}, resp)
+
+	getResp, err := p.MGet(key, MGetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+	assert.Equal(t, MGetResponse{}, getResp)
+
+	delResp, err := p.MDel(key, MDelOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+	assert.Equal(t, MDelResponse{}, delResp)
+
+	// Set Another Keys
+	setResp, err := p.MSet("key01", []byte("value01"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, setResp)
+
+	setResp, err = p.MSet("key02", []byte("value02"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, setResp)
+
+	// Get Keys
+	fn1 := p.MGet("key01", MGetOptions{})
+	fn2 := p.MGet("key02", MGetOptions{})
+
+	getResp, err = fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("value01"),
+	}, getResp)
+
+	getResp, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("value02"),
+	}, getResp)
+}
+
+func TestValidateKeyFormat(t *testing.T) {
+	err := validateKeyFormat("\x00")
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+
+	err = validateKeyFormat("\r\n")
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+
+	err = validateKeyFormat("\t")
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+}
+
 func Benchmark_Pipeline_Single_Thread(b *testing.B) {
 	c, err := New("localhost:11211", 1)
 	if err != nil {
