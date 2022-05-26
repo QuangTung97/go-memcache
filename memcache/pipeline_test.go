@@ -479,6 +479,33 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	}, getResp)
 }
 
+func TestPipeline_Not_Blocking__When_Wait_For_Response__After_Close(t *testing.T) {
+	for i := 0; i < 4000; i++ {
+		func() {
+			c, err := New("localhost:11211", 1)
+			assert.Equal(t, nil, err)
+			defer func() { _ = c.Close() }()
+
+			p := c.Pipeline()
+			defer p.Finish()
+
+			pipelineFlushAll(p)
+
+			go func() {
+				_ = c.Close()
+			}()
+
+			for k := 0; k < 100; k++ {
+				fn1 := p.MSet("key01", []byte("value01"), MSetOptions{})
+				fn2 := p.MGet("key01", MGetOptions{})
+
+				_, _ = fn1()
+				_, _ = fn2()
+			}
+		}()
+	}
+}
+
 func TestValidateKeyFormat(t *testing.T) {
 	err := validateKeyFormat("\x00")
 	assert.Equal(t, ErrInvalidKeyFormat, err)

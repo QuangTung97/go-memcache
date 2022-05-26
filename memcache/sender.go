@@ -49,6 +49,7 @@ func newCommand() *commandData {
 	return c
 }
 
+// TODO Not signal when closing
 func (c *commandData) waitCompleted() {
 	c.mut.Lock()
 	for !c.completed {
