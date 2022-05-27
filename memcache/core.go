@@ -65,7 +65,7 @@ func (c *coreConnection) waitForError() {
 func (c *coreConnection) recvCommands() {
 	defer c.wg.Done()
 
-	for !c.isShuttingDown() {
+	for {
 		err := c.recvSingleCommand()
 		if err == ErrConnClosed { // cmd len == 0
 			return
