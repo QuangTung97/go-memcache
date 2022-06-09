@@ -108,7 +108,7 @@ func TestClient_PushData_To_Connection_Correctly(t *testing.T) {
 	}
 	defer resetGlobalNetDial()
 
-	c, err := New("localhost:11211", 1)
+	c, err := New("localhost:11211", 1, WithBufferSize(64*1024))
 	assert.Equal(t, nil, err)
 	defer func() { _ = c.Close() }()
 

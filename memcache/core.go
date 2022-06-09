@@ -18,7 +18,7 @@ type coreConnection struct {
 	cmdList *cmdListReader
 }
 
-func newCoreConnection(nc netConn) *coreConnection {
+func newCoreConnection(nc netConn, options *memcacheOptions) *coreConnection {
 	cmdSender := newSender(nc, 10)
 
 	c := &coreConnection{
@@ -28,7 +28,7 @@ func newCoreConnection(nc netConn) *coreConnection {
 		shuttingDown: 0,
 
 		tmpData: make([]byte, 1<<21),
-		msgData: make([]byte, 2048),
+		msgData: make([]byte, options.bufferSize),
 		cmdList: newCmdListReader(cmdSender),
 	}
 

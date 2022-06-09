@@ -3,18 +3,23 @@ package memcache
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"testing"
 	"time"
 )
+
+func newCoreConnTest(writer FlushWriter, reader io.ReadCloser) *coreConnection {
+	return newCoreConnection(netConn{
+		writer: writer,
+		reader: reader,
+	}, computeOptions())
+}
 
 func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
 	writer1 := &FlushWriterMock{}
 	reader1 := &readCloserInterfaceMock{}
 
-	c := newCoreConnection(netConn{
-		writer: writer1,
-		reader: reader1,
-	})
+	c := newCoreConnTest(writer1, reader1)
 
 	writer1.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil
@@ -79,10 +84,7 @@ func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_
 	writer1 := &FlushWriterMock{}
 	reader1 := &readCloserInterfaceMock{}
 
-	c := newCoreConnection(netConn{
-		writer: writer1,
-		reader: reader1,
-	})
+	c := newCoreConnTest(writer1, reader1)
 
 	writer1.WriteFunc = func(p []byte) (int, error) { return len(p), nil }
 	writer1.FlushFunc = func() error { return nil }

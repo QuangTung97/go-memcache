@@ -15,13 +15,13 @@ type clientConn struct {
 // for testing
 var globalNetDial = net.Dial
 
-func netDialNewConn(addr string) (netConn, error) {
+func netDialNewConn(addr string, options *memcacheOptions) (netConn, error) {
 	nc, err := globalNetDial("tcp", addr)
 	if err != nil {
 		return netConn{}, err
 	}
 
-	writer := bufio.NewWriter(nc)
+	writer := bufio.NewWriterSize(nc, options.bufferSize)
 	return netConn{
 		reader: nc,
 		writer: writer,
@@ -32,13 +32,13 @@ func netDialNewConn(addr string) (netConn, error) {
 func newConn(addr string, options ...Option) (*clientConn, error) {
 	opts := computeOptions(options...)
 
-	nc, err := netDialNewConn(addr)
+	nc, err := netDialNewConn(addr, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	c := &clientConn{
-		core: newCoreConnection(nc),
+		core: newCoreConnection(nc, opts),
 	}
 
 	c.wg.Add(1)
@@ -51,7 +51,7 @@ func newConn(addr string, options ...Option) (*clientConn, error) {
 				return
 			}
 
-			nc, err := netDialNewConn(addr)
+			nc, err := netDialNewConn(addr, opts)
 			if err != nil {
 				time.Sleep(opts.retryDuration)
 				continue
