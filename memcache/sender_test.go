@@ -109,6 +109,7 @@ func stringsToMap(list []string) map[string]struct{} {
 	return result
 }
 
+//revive:disable-next-line:cognitive-complexity
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 2)
