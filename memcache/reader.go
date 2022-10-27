@@ -82,16 +82,16 @@ func (r *responseReader) isVA(pos uint64) bool {
 	return r.data[r.getIndex(pos)] == 'V' && r.data[r.getIndex(pos+1)] == 'A'
 }
 
-func (r *responseReader) returnIfHasFullResponseData() (int, bool) {
+func (r *responseReader) returnIfHasFullResponseData() bool {
 	if r.waitForEnd <= r.end {
 		r.lastPos = r.waitForEnd
 		r.waitForEnd = 0
-		return int(r.lastPos - r.begin), true
+		return true
 	}
-	return 0, false
+	return false
 }
 
-func (r *responseReader) getNext() (int, bool) {
+func (r *responseReader) hasNext() bool {
 	if r.waitForEnd > 0 {
 		return r.returnIfHasFullResponseData()
 	}
@@ -106,30 +106,40 @@ func (r *responseReader) getNext() (int, bool) {
 			dataLen, err := r.parseIntFrom(r.begin+2, pos)
 			if err != nil {
 				r.lastErr = err
-				return 0, false
+				return false
 			}
 			r.waitForEnd = r.lastPos + dataLen + 2
 			return r.returnIfHasFullResponseData()
 		}
-		return int(r.lastPos - r.begin), true
+		return true
 	}
 	if r.end >= r.begin+2 {
 		r.lastPos = r.end - 2
 	}
-	return 0, false
+	return false
 }
 
-func (r *responseReader) readData(data []byte) {
+func (r *responseReader) readData(data []byte) []byte {
 	n := r.lastPos - r.begin
 	first := r.getIndex(r.begin)
 	max := r.getCap()
 
-	copy(data, r.data[first:])
-	if first+n > max {
-		firstPart := max - first
-		copy(data[firstPart:], r.data)
+	firstEnd := first + n
+	if firstEnd > max {
+		firstEnd = max
 	}
+
+	data = append(data, r.data[first:firstEnd]...)
+
+	if firstEnd == max {
+		firstPart := max - first
+		secondPart := n - firstPart
+		data = append(data, r.data[:secondPart]...)
+	}
+
 	r.begin = r.lastPos
+
+	return data
 }
 
 func (r *responseReader) hasError() error {

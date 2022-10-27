@@ -13,7 +13,6 @@ type coreConnection struct {
 	wg           sync.WaitGroup
 
 	// job data
-	tmpData []byte
 	msgData []byte
 	cmdList *cmdListReader
 }
@@ -27,7 +26,6 @@ func newCoreConnection(nc netConn, options *memcacheOptions) *coreConnection {
 
 		shuttingDown: 0,
 
-		tmpData: make([]byte, 1<<21),
 		msgData: make([]byte, options.bufferSize),
 		cmdList: newCmdListReader(cmdSender),
 	}
@@ -95,7 +93,7 @@ func (c *coreConnection) recvSingleCommand() error {
 		current := c.cmdList.current()
 
 		// Read from response reader
-		size, ok := c.responseReader.getNext()
+		ok := c.responseReader.hasNext()
 		if !ok {
 			if c.responseReader.hasError() != nil {
 				return c.responseReader.hasError() // TODO testing
@@ -110,12 +108,7 @@ func (c *coreConnection) recvSingleCommand() error {
 			continue
 		}
 
-		c.responseReader.readData(c.tmpData[:size])
-
-		if responseCount == 0 {
-			current.data = current.data[:0] // clear command data
-		}
-		current.data = append(current.data, c.tmpData[:size]...) // need optimize??
+		current.data = c.responseReader.readData(current.data)
 		responseCount++
 
 		if responseCount >= current.cmdCount {

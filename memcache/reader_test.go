@@ -5,11 +5,14 @@ import (
 	"testing"
 )
 
+func (r *responseReader) readDataForTest() []byte {
+	return r.readData(nil)
+}
+
 func TestResponseReader_Empty(t *testing.T) {
 	r := newResponseReader(10)
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 }
 
 func TestResponseReader_Normal(t *testing.T) {
@@ -17,29 +20,23 @@ func TestResponseReader_Normal(t *testing.T) {
 
 	r.recv([]byte("abcd\r\nxxx\r\n"))
 
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("abcd\r\n"), size)
 
-	data := make([]byte, size)
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte("abcd\r\n"), data)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("xxx\r\n"), size)
 
-	data = make([]byte, size)
-	r.readData(data)
+	data = r.readDataForTest()
 	assert.Equal(t, []byte("xxx\r\n"), data)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 }
 
 func TestResponseReader_Missing_LF(t *testing.T) {
@@ -47,27 +44,22 @@ func TestResponseReader_Missing_LF(t *testing.T) {
 
 	r.recv([]byte("abcd\r"))
 
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 
 	r.recv([]byte("\n"))
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("abcd\r\n"), size)
 
-	data := make([]byte, size)
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte("abcd\r\n"), data)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 }
 
 func TestResponseReader_Wrap_Around(t *testing.T) {
@@ -75,30 +67,25 @@ func TestResponseReader_Wrap_Around(t *testing.T) {
 
 	r.recv([]byte("abcd\r\n"))
 
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("abcd\r\n"), size)
 
-	data := make([]byte, size)
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte("abcd\r\n"), data)
 
 	r.recv([]byte("xxx\r\n"))
-	size, ok = r.getNext()
-	assert.Equal(t, true, ok)
-	assert.Equal(t, len("xxx\r\n"), size)
 
-	data = make([]byte, size)
-	r.readData(data)
+	ok = r.hasNext()
+	assert.Equal(t, true, ok)
+
+	data = r.readDataForTest()
 	assert.Equal(t, []byte("xxx\r\n"), data)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 }
 
 func TestResponseReader_With_Value_Return(t *testing.T) {
@@ -106,23 +93,20 @@ func TestResponseReader_With_Value_Return(t *testing.T) {
 
 	r.recv([]byte("VA 13\r\nAA\r\n"))
 
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 
 	r.recv([]byte("123456789\r\nVA"))
 
 	expected := "VA 13\r\nAA\r\n123456789\r\n"
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len(expected), size)
 
-	data := make([]byte, len(expected))
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte(expected), data)
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, false, ok)
 
 	// SECOND CYCLE
@@ -131,12 +115,10 @@ func TestResponseReader_With_Value_Return(t *testing.T) {
 
 	expected = "VA   4  \r\nabcd\r\n"
 
-	size, ok = r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len(expected), size)
 
-	data = make([]byte, len(expected))
-	r.readData(data)
+	data = r.readDataForTest()
 	assert.Equal(t, []byte(expected), data)
 }
 
@@ -145,9 +127,8 @@ func TestResponseReader_With_VA_Error(t *testing.T) {
 
 	r.recv([]byte("VA xby\r\n"))
 
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, 0, size)
 	assert.Equal(t, ErrBrokenPipe{reason: "not a number after VA"}, r.hasError())
 }
 
@@ -159,12 +140,10 @@ func TestResponseReader_Reset_Simple(t *testing.T) {
 	r.reset()
 	r.recv([]byte("EN\r\n"))
 
-	size, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("EN\r\n"), size)
 
-	data := make([]byte, size)
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte("EN\r\n"), data)
 }
 
@@ -172,19 +151,17 @@ func TestResponseReader_Reset_With_Wait_For_End(t *testing.T) {
 	r := newResponseReader(10)
 
 	r.recv([]byte("VA 5\r\nXX"))
-	_, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, false, ok)
 	assert.Equal(t, nil, r.hasError())
 
 	r.reset()
 	r.recv([]byte("EN\r\n"))
 
-	size, ok := r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("EN\r\n"), size)
 
-	data := make([]byte, size)
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte("EN\r\n"), data)
 }
 
@@ -192,19 +169,17 @@ func TestResponseReader_Reset_With_Error(t *testing.T) {
 	r := newResponseReader(10)
 
 	r.recv([]byte("VA abcd\r\n"))
-	_, ok := r.getNext()
+	ok := r.hasNext()
 	assert.Equal(t, false, ok)
 	assert.Error(t, r.hasError())
 
 	r.reset()
 	r.recv([]byte("EN\r\n"))
 
-	size, ok := r.getNext()
+	ok = r.hasNext()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, len("EN\r\n"), size)
 	assert.Equal(t, nil, r.hasError())
 
-	data := make([]byte, size)
-	r.readData(data)
+	data := r.readDataForTest()
 	assert.Equal(t, []byte("EN\r\n"), data)
 }
