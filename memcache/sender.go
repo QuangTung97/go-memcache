@@ -85,6 +85,11 @@ func (c *commandData) waitCompleted() {
 
 func (c *commandData) setCompleted(err error) {
 	c.mut.Lock()
+	if c.completed {
+		c.mut.Unlock()
+		return
+	}
+
 	c.completed = true
 	c.lastErr = err
 	c.mut.Unlock()
