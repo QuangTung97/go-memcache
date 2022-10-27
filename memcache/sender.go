@@ -29,13 +29,32 @@ func NoopFlusher(w io.Writer) FlushWriter {
 	return noopFlusher{Writer: w}
 }
 
+//=====================
+// Pool of Bytes
+//=====================
+var commandDataBytesPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 256)
+	},
+}
+
+func getBytesFromPool() []byte {
+	data := commandDataBytesPool.Get().([]byte)
+	return data
+}
+
+func putBytesToPool(data []byte) {
+	data = data[:0]
+	commandDataBytesPool.Put(data)
+}
+
 type commandData struct {
-	cmdCount  int
+	cmdCount int
+
 	data      []byte // for request and response data
 	completed bool
 
-	resetReader bool
-	reader      io.ReadCloser
+	reader io.ReadCloser
 
 	lastErr error
 
@@ -44,9 +63,16 @@ type commandData struct {
 }
 
 func newCommand() *commandData {
-	c := &commandData{}
+	c := &commandData{
+		data: getBytesFromPool(),
+	}
 	c.cond = sync.NewCond(&c.mut)
 	return c
+}
+
+func freeCommandData(cmd *commandData) {
+	putBytesToPool(cmd.data)
+	cmd.data = nil
 }
 
 func (c *commandData) waitCompleted() {
@@ -68,11 +94,10 @@ func (c *commandData) setCompleted(err error) {
 
 type sender struct {
 	//---- protected by ncMut ------
-	nc     netConn
-	ncMut  sync.Mutex
-	tmpBuf []*commandData
-
-	newNetConn bool // right after use resetNetConn
+	nc       netConn
+	ncMut    sync.Mutex
+	tmpBuf   []*commandData
+	dataList [][]byte
 
 	lastErr     error
 	ncErrorCond *sync.Cond
@@ -227,7 +252,7 @@ func newSender(nc netConn, bufSizeLog int) *sender {
 	}
 
 	initSendBuffer(&s.send, bufSizeLog)
-	initRecvBuffer(&s.recv, bufSizeLog)
+	initRecvBuffer(&s.recv, bufSizeLog+1)
 
 	s.ncErrorCond = sync.NewCond(&s.ncMut)
 	return s
@@ -258,14 +283,8 @@ func (s *sender) writeAndFlush() error {
 		return s.lastErr
 	}
 
-	for _, cmd := range s.tmpBuf {
-		cmd.reader = s.nc.reader
-		if s.newNetConn {
-			s.newNetConn = false
-			cmd.resetReader = true
-		}
-
-		_, err := s.nc.writer.Write(cmd.data)
+	for _, data := range s.dataList {
+		_, err := s.nc.writer.Write(data)
 		if err != nil {
 			s.setLastErrorAndClose(err)
 			return err
@@ -286,14 +305,29 @@ func (s *sender) sendToWriter() {
 
 	s.tmpBuf = s.send.popAll(s.tmpBuf)
 
+	for _, cmd := range s.tmpBuf {
+		cmd.reader = s.nc.reader
+		s.dataList = append(s.dataList, cmd.data)
+		cmd.data = getBytesFromPool()
+	}
+
+	s.recv.push(s.tmpBuf)
+
+	// flush to tcp socket
 	err := s.writeAndFlush()
+
+	// clear data list
+	for _, data := range s.dataList {
+		putBytesToPool(data)
+	}
+	s.dataList = s.dataList[:0]
+
 	if err != nil {
 		s.replyErrorToCmdInTmpBuf(err)
 		s.ncMut.Unlock()
 		return
 	}
 
-	s.recv.push(s.tmpBuf)
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 
 	s.ncMut.Unlock()
@@ -334,7 +368,6 @@ func (s *sender) resetNetConn(nc netConn) {
 	s.ncMut.Lock()
 	s.nc = nc
 	s.lastErr = nil
-	s.newNetConn = true
 	s.ncMut.Unlock()
 
 	s.ncErrorCond.Signal()

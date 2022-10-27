@@ -1,15 +1,5 @@
 package memcache
 
-import "sync"
-
-var cmdDataPool = sync.Pool{
-	New: func() interface{} {
-		c := newCommand()
-		c.data = make([]byte, 0, 256)
-		return c
-	},
-}
-
 type cmdBuilder struct {
 	cmd *commandData
 }
@@ -33,17 +23,8 @@ type MDelOptions struct {
 	TTL uint32 // only apply if I = true
 }
 
-func freeCommandData(cmd *commandData) {
-	cmdDataPool.Put(cmd)
-}
-
 func initCmdBuilder(b *cmdBuilder) {
-	b.cmd = cmdDataPool.Get().(*commandData)
-	b.cmd.data = b.cmd.data[:0]
-	b.cmd.cmdCount = 0
-	b.cmd.completed = false
-	b.cmd.resetReader = false
-	b.cmd.lastErr = nil
+	b.cmd = newCommand()
 }
 
 func appendNumber(data []byte, n uint64) []byte {

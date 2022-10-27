@@ -71,6 +71,8 @@ func (c *coreConnection) recvCommands() {
 			return
 		}
 		if err != nil {
+			c.responseReader.reset()
+
 			reader := c.cmdList.current().reader
 			c.sender.setNetConnError(err, reader)
 			_ = reader.Close()
@@ -96,17 +98,12 @@ func (c *coreConnection) recvSingleCommand() error {
 		size, ok := c.responseReader.getNext()
 		if !ok {
 			if c.responseReader.hasError() != nil {
-				return c.responseReader.hasError() // TODO
+				return c.responseReader.hasError() // TODO testing
 			}
 
 			n, err := current.reader.Read(c.msgData)
 			if err != nil {
 				return err
-			}
-
-			if current.resetReader {
-				current.resetReader = false
-				c.responseReader.reset()
 			}
 
 			c.responseReader.recv(c.msgData[:n])
