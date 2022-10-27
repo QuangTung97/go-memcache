@@ -49,7 +49,7 @@ func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
 	cmd2.waitCompleted()
 
 	assert.Equal(t, errors.New("some error"), cmd2.lastErr)
-	assert.Equal(t, 2, len(reader1.ReadCalls()))
+	assert.GreaterOrEqual(t, len(reader1.ReadCalls()), 2)
 
 	// AFTER Reset Connection
 
