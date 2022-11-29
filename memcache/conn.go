@@ -21,6 +21,16 @@ func netDialNewConn(addr string, options *memcacheOptions) (netConn, error) {
 		return netConn{}, err
 	}
 
+	tcpNetConn, ok := nc.(*net.TCPConn)
+	if ok {
+		if err := tcpNetConn.SetKeepAlive(true); err != nil {
+			return netConn{}, err
+		}
+		if err := tcpNetConn.SetKeepAlivePeriod(options.tcpKeepAliveDuration); err != nil {
+			return netConn{}, err
+		}
+	}
+
 	writer := bufio.NewWriterSize(nc, options.bufferSize)
 	return netConn{
 		reader: nc,
