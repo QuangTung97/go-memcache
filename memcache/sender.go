@@ -32,20 +32,33 @@ func NoopFlusher(w io.Writer) FlushWriter {
 //=====================
 // Pool of Bytes
 //=====================
-var commandDataBytesPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 0, 256)
+var requestBytesPool = bytesPool{
+	pool: sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 0, 256)
+		},
 	},
 }
 
-func getBytesFromPool() []byte {
-	data := commandDataBytesPool.Get().([]byte)
-	return data
+var responseBytesPool = bytesPool{
+	pool: sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 0, 1024)
+		},
+	},
 }
 
-func putBytesToPool(data []byte) {
+type bytesPool struct {
+	pool sync.Pool
+}
+
+func (p *bytesPool) get() []byte {
+	return p.pool.Get().([]byte)
+}
+
+func (p *bytesPool) put(data []byte) {
 	data = data[:0]
-	commandDataBytesPool.Put(data)
+	p.pool.Put(data)
 }
 
 type commandData struct {
@@ -67,7 +80,8 @@ type commandData struct {
 
 func newCommand() *commandData {
 	c := &commandData{
-		requestData: getBytesFromPool(),
+		requestData:  requestBytesPool.get(),
+		responseData: responseBytesPool.get(),
 	}
 	c.cond = sync.NewCond(&c.mut)
 	return c
@@ -83,8 +97,8 @@ func (c *commandData) cloneShareRequest() *commandData {
 }
 
 func freeCommandData(cmd *commandData) {
-	putBytesToPool(cmd.requestData)
-	putBytesToPool(cmd.responseData)
+	requestBytesPool.put(cmd.requestData)
+	responseBytesPool.put(cmd.responseData)
 }
 
 func (c *commandData) waitCompleted() {
