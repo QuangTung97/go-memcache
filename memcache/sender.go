@@ -115,7 +115,9 @@ type sender struct {
 	ncMut  sync.Mutex
 	tmpBuf []*commandData
 
-	epoch       uint64
+	epoch    uint64
+	cmdEpoch uint64
+
 	lastErr     error
 	ncErrorCond *sync.Cond
 	//---- end ncMut protection ----
@@ -324,9 +326,7 @@ func (s *sender) sendToWriter() {
 
 	for _, cmd := range s.tmpBuf {
 		cmd.reader = s.nc.reader
-		if s.lastErr == nil {
-			cmd.epoch = s.epoch
-		}
+		cmd.epoch = s.cmdEpoch
 	}
 
 	s.recv.push(s.tmpBuf)
@@ -402,6 +402,7 @@ func (s *sender) increaseEpochAndSetError(err error) {
 func (s *sender) resetNetConn(nc netConn) {
 	s.ncMut.Lock()
 	s.epoch++
+	s.cmdEpoch = s.epoch
 	s.nc = nc
 	s.lastErr = nil
 	s.ncMut.Unlock()
