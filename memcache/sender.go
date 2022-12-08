@@ -118,8 +118,9 @@ type sender struct {
 	epoch    uint64
 	cmdEpoch uint64
 
-	lastErr     error
-	ncErrorCond *sync.Cond
+	lastErr       error
+	ncErrorCond   *sync.Cond
+	epochWaitCond *sync.Cond
 	//---- end ncMut protection ----
 
 	send sendBuffer
@@ -274,6 +275,7 @@ func newSender(nc netConn, bufSizeLog int) *sender {
 	initRecvBuffer(&s.recv, bufSizeLog+1)
 
 	s.ncErrorCond = sync.NewCond(&s.ncMut)
+	s.epochWaitCond = sync.NewCond(&s.ncMut)
 	return s
 }
 
@@ -382,7 +384,7 @@ func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
 func (s *sender) waitForNewEpoch(waitEpoch uint64) error {
 	s.ncMut.Lock()
 	for s.lastErr != ErrConnClosed && s.epoch <= waitEpoch {
-		s.ncErrorCond.Wait()
+		s.epochWaitCond.Wait()
 	}
 	err := s.lastErr
 	s.ncMut.Unlock()
@@ -396,7 +398,7 @@ func (s *sender) increaseEpochAndSetError(err error) {
 	s.lastErr = err
 	s.ncMut.Unlock()
 
-	s.ncErrorCond.Broadcast()
+	s.epochWaitCond.Broadcast()
 }
 
 func (s *sender) resetNetConn(nc netConn) {
@@ -407,7 +409,7 @@ func (s *sender) resetNetConn(nc netConn) {
 	s.lastErr = nil
 	s.ncMut.Unlock()
 
-	s.ncErrorCond.Broadcast()
+	s.epochWaitCond.Broadcast()
 }
 
 func (s *sender) closeNetConn() error {
@@ -419,7 +421,8 @@ func (s *sender) closeNetConn() error {
 
 	s.ncMut.Unlock()
 
-	s.ncErrorCond.Broadcast()
+	s.ncErrorCond.Signal()
+	s.epochWaitCond.Broadcast()
 
 	return err
 }

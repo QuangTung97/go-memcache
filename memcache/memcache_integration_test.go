@@ -242,6 +242,7 @@ func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
 }
 
 func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
+	// TODO Add Test Cases
 	t.Skip()
 
 	globalNetDial = func(network, address string) (net.Conn, error) {
