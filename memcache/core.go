@@ -108,7 +108,7 @@ func (c *coreConnection) recvSingleCommand() error {
 			continue
 		}
 
-		current.data = c.responseReader.readData(current.data)
+		current.responseData = c.responseReader.readData(current.responseData)
 		responseCount++
 
 		if responseCount >= current.cmdCount {

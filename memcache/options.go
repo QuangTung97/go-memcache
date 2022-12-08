@@ -7,6 +7,7 @@ type memcacheOptions struct {
 	bufferSize    int
 
 	tcpKeepAliveDuration time.Duration
+	dialErrorLogger      func(err error)
 }
 
 // Option ...
@@ -18,6 +19,7 @@ func computeOptions(options ...Option) *memcacheOptions {
 		bufferSize:    16 * 1024,
 
 		tcpKeepAliveDuration: 5 * time.Minute,
+		dialErrorLogger:      func(err error) {},
 	}
 	for _, o := range options {
 		o(opts)
@@ -36,6 +38,13 @@ func WithRetryDuration(d time.Duration) Option {
 func WithBufferSize(size int) Option {
 	return func(opts *memcacheOptions) {
 		opts.bufferSize = size
+	}
+}
+
+// WithDialErrorLogger set the dial error logger
+func WithDialErrorLogger(fn func(err error)) Option {
+	return func(opts *memcacheOptions) {
+		opts.dialErrorLogger = fn
 	}
 }
 

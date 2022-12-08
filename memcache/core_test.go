@@ -77,7 +77,7 @@ func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
 	cmd3.waitCompleted()
 
 	assert.Equal(t, nil, cmd3.lastErr)
-	assert.Equal(t, "HD 100\r\n", string(cmd3.data))
+	assert.Equal(t, "HD 100\r\n", string(cmd3.responseData))
 }
 
 func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_Again(t *testing.T) {
@@ -106,6 +106,6 @@ func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_
 	cmd1.waitCompleted()
 	cmd2.waitCompleted()
 
-	assert.Equal(t, "VA 4\r\nABCD\r\n", string(cmd1.data))
-	assert.Equal(t, "HD\r\n", string(cmd2.data))
+	assert.Equal(t, "VA 4\r\nABCD\r\n", string(cmd1.responseData))
+	assert.Equal(t, "HD\r\n", string(cmd2.responseData))
 }

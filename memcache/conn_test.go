@@ -26,7 +26,7 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 	c.pushCommand(cmd1)
 	cmd1.waitCompleted()
 
-	assert.Equal(t, "EN\r\n", string(cmd1.data))
+	assert.Equal(t, "EN\r\n", string(cmd1.responseData))
 }
 
 func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
@@ -44,7 +44,7 @@ func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 	c.pushCommand(cmd1)
 	cmd1.waitCompleted()
 
-	assert.Equal(t, "EN\r\nEN\r\nEN\r\n", string(cmd1.data))
+	assert.Equal(t, "EN\r\nEN\r\nEN\r\n", string(cmd1.responseData))
 }
 
 func TestConn_Set_Get(t *testing.T) {
@@ -72,7 +72,7 @@ func TestConn_Set_Get(t *testing.T) {
 		"OK\r\n",
 	}
 
-	assert.Equal(t, strings.Join(results, ""), string(cmd.data))
+	assert.Equal(t, strings.Join(results, ""), string(cmd.responseData))
 }
 
 func TestConn_Shutdown(t *testing.T) {
@@ -83,7 +83,7 @@ func TestConn_Shutdown(t *testing.T) {
 	c.pushCommand(cmd1)
 	cmd1.waitCompleted()
 
-	assert.Equal(t, "EN\r\n", string(cmd1.data))
+	assert.Equal(t, "EN\r\n", string(cmd1.responseData))
 
 	err = c.shutdown()
 	assert.Equal(t, nil, err)

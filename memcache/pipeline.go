@@ -2,6 +2,8 @@ package memcache
 
 import (
 	"errors"
+	"io"
+	"net"
 	"unicode"
 )
 
@@ -9,10 +11,13 @@ import (
 var ErrAlreadyGotten = errors.New("pipeline error: already gotten")
 
 type pipelineSession struct {
-	published bool
-	doWaited  bool
+	pipeline *Pipeline
 
-	currentCmd     *commandData
+	builder cmdBuilder
+
+	published     bool
+	alreadyWaited bool
+
 	currentCmdList []*pipelineCmd
 }
 
@@ -28,20 +33,22 @@ type pipelineCmd struct {
 
 // Pipeline should NOT be used concurrently
 type Pipeline struct {
-	builderInstance cmdBuilder
-	currentSession  *pipelineSession
+	currentSession *pipelineSession
 
 	c *clientConn
 }
 
-func newPipelineSession(currentCmd *commandData) *pipelineSession {
-	return &pipelineSession{
-		published: false,
-		doWaited:  false,
+func (p *Pipeline) newPipelineSession() *pipelineSession {
+	sess := &pipelineSession{
+		pipeline: p,
 
-		currentCmd:     currentCmd,
+		published:     false,
+		alreadyWaited: false,
+
 		currentCmdList: make([]*pipelineCmd, 0, 32),
 	}
+	initCmdBuilder(&sess.builder)
+	return sess
 }
 
 func newPipelineCmd(sess *pipelineSession, cmdType commandType) *pipelineCmd {
@@ -60,23 +67,18 @@ func (c *Client) Pipeline() *Pipeline {
 	return p
 }
 
-func (s *pipelineSession) waitAndParseCmdData() {
-	if s.doWaited {
-		return
-	}
-	s.doWaited = true
-
-	s.currentCmd.waitCompleted()
-
+func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 	var ps parser
-	initParser(&ps, s.currentCmd.data)
+	initParser(&ps, currentCmd.responseData)
+
+	if currentCmd.lastErr != nil {
+		for _, cmd := range s.currentCmdList {
+			cmd.err = currentCmd.lastErr
+		}
+		return currentCmd.lastErr
+	}
 
 	for _, cmd := range s.currentCmdList {
-		if s.currentCmd.lastErr != nil {
-			cmd.err = s.currentCmd.lastErr
-			continue
-		}
-
 		switch cmd.cmdType {
 		case commandTypeMGet:
 			cmd.resp, cmd.err = ps.readMGet()
@@ -95,13 +97,47 @@ func (s *pipelineSession) waitAndParseCmdData() {
 		}
 	}
 
-	// clear currentCmdList
-
-	freeCommandData(s.currentCmd)
+	return nil
 }
 
-func (p *Pipeline) getBuilder() *cmdBuilder {
-	return &p.builderInstance
+func (s *pipelineSession) doRetryForError(currentCmd *commandData, err error) {
+	if err == nil {
+		return
+	}
+
+	var netErr *net.OpError
+	if err != io.EOF && !errors.As(err, &netErr) {
+		return
+	}
+
+	// Do Retry
+	err = s.pipeline.c.core.sender.waitForNewEpoch(currentCmd.epoch)
+	if err != nil {
+		return
+	}
+
+	retryCmd := currentCmd.cloneShareRequest()
+
+	s.pushCommands(retryCmd)
+	retryCmd.waitCompleted()
+
+	_ = s.parseCommands(retryCmd)
+}
+
+func (s *pipelineSession) waitAndParseCmdData() {
+	if s.alreadyWaited {
+		return
+	}
+	s.alreadyWaited = true
+
+	currentCmd := s.builder.getCmd()
+	currentCmd.waitCompleted()
+
+	err := s.parseCommands(currentCmd)
+	s.doRetryForError(currentCmd, err)
+
+	// clear currentCmdList
+	freeCommandData(currentCmd)
 }
 
 func (p *Pipeline) resetPipelineSession() {
@@ -110,30 +146,27 @@ func (p *Pipeline) resetPipelineSession() {
 
 func (p *Pipeline) getCurrentSession() *pipelineSession {
 	if p.currentSession == nil {
-		initCmdBuilder(&p.builderInstance)
-		cmd := p.builderInstance.getCmd()
-		p.currentSession = newPipelineSession(cmd)
+		p.currentSession = p.newPipelineSession()
 	}
 	return p.currentSession
 }
 
-func (p *Pipeline) pushCommands() {
-	currentCmd := p.getBuilder().getCmd()
-	p.c.pushCommand(currentCmd)
-
-	p.resetPipelineSession()
+func (s *pipelineSession) pushCommands(cmd *commandData) {
+	pipe := s.pipeline
+	pipe.c.pushCommand(cmd)
 }
 
-func (p *Pipeline) pushCommandsIfNotPublished(sess *pipelineSession) {
-	if !sess.published {
-		sess.published = true
-		p.pushCommands()
+func (s *pipelineSession) pushCommandsIfNotPublished() {
+	if !s.published {
+		s.published = true
+		s.pushCommands(s.builder.getCmd())
+		s.pipeline.resetPipelineSession()
 	}
 }
 
-func (p *Pipeline) pushAndWaitResponses(cmd *pipelineCmd) {
-	sess := cmd.sess
-	p.pushCommandsIfNotPublished(sess)
+func (c *pipelineCmd) pushAndWaitResponses() {
+	sess := c.sess
+	sess.pushCommandsIfNotPublished()
 	sess.waitAndParseCmdData()
 }
 
@@ -148,7 +181,7 @@ func (p *Pipeline) addCommand(cmdType commandType) *pipelineCmd {
 func (p *Pipeline) Finish() {
 	if p.currentSession != nil {
 		sess := p.currentSession
-		p.pushCommandsIfNotPublished(sess)
+		sess.pushCommandsIfNotPublished()
 		sess.waitAndParseCmdData()
 	}
 }
@@ -158,7 +191,7 @@ func (p *Pipeline) pushAndWaitIfNotRead(cmd *pipelineCmd) error {
 		return ErrAlreadyGotten
 	}
 	cmd.isRead = true
-	p.pushAndWaitResponses(cmd)
+	cmd.pushAndWaitResponses()
 	return nil
 }
 
@@ -171,8 +204,7 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 	}
 
 	cmd := p.addCommand(commandTypeMGet)
-
-	p.getBuilder().addMGet(key, opts)
+	cmd.sess.builder.addMGet(key, opts)
 
 	return func() (MGetResponse, error) {
 		err := p.pushAndWaitIfNotRead(cmd)
@@ -196,8 +228,7 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 	}
 
 	cmd := p.addCommand(commandTypeMSet)
-
-	p.getBuilder().addMSet(key, value, opts)
+	cmd.sess.builder.addMSet(key, value, opts)
 
 	return func() (MSetResponse, error) {
 		err := p.pushAndWaitIfNotRead(cmd)
@@ -222,7 +253,7 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 
 	cmd := p.addCommand(commandTypeMDel)
 
-	p.getBuilder().addMDel(key, opts)
+	cmd.sess.builder.addMDel(key, opts)
 
 	return func() (MDelResponse, error) {
 		err := p.pushAndWaitIfNotRead(cmd)
@@ -240,15 +271,14 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 // Execute flush operations to memcached (interrupts pipelining)
 func (p *Pipeline) Execute() {
 	if p.currentSession != nil {
-		p.pushCommandsIfNotPublished(p.currentSession)
+		p.currentSession.pushCommandsIfNotPublished()
 	}
 }
 
 // FlushAll ...
 func (p *Pipeline) FlushAll() func() error {
 	cmd := p.addCommand(commandTypeFlushAll)
-
-	p.getBuilder().addFlushAll()
+	cmd.sess.builder.addFlushAll()
 
 	return func() error {
 		err := p.pushAndWaitIfNotRead(cmd)

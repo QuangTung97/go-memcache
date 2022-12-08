@@ -47,70 +47,70 @@ func appendNumber(data []byte, n uint64) []byte {
 func (b *cmdBuilder) addMGet(key string, opts MGetOptions) {
 	b.cmd.cmdCount++
 
-	b.cmd.data = append(b.cmd.data, "mg "...)
-	b.cmd.data = append(b.cmd.data, key...)
+	b.cmd.requestData = append(b.cmd.requestData, "mg "...)
+	b.cmd.requestData = append(b.cmd.requestData, key...)
 
 	if opts.CAS {
-		b.cmd.data = append(b.cmd.data, " c"...)
+		b.cmd.requestData = append(b.cmd.requestData, " c"...)
 	}
 
 	if opts.N > 0 {
-		b.cmd.data = append(b.cmd.data, " N"...)
-		b.cmd.data = appendNumber(b.cmd.data, uint64(opts.N))
+		b.cmd.requestData = append(b.cmd.requestData, " N"...)
+		b.cmd.requestData = appendNumber(b.cmd.requestData, uint64(opts.N))
 	}
 
-	b.cmd.data = append(b.cmd.data, " v\r\n"...)
+	b.cmd.requestData = append(b.cmd.requestData, " v\r\n"...)
 }
 
 func (b *cmdBuilder) addMSet(key string, data []byte, opts MSetOptions) {
 	b.cmd.cmdCount++
 
-	b.cmd.data = append(b.cmd.data, "ms "...)
-	b.cmd.data = append(b.cmd.data, key...)
-	b.cmd.data = append(b.cmd.data, ' ')
+	b.cmd.requestData = append(b.cmd.requestData, "ms "...)
+	b.cmd.requestData = append(b.cmd.requestData, key...)
+	b.cmd.requestData = append(b.cmd.requestData, ' ')
 
-	b.cmd.data = appendNumber(b.cmd.data, uint64(len(data)))
+	b.cmd.requestData = appendNumber(b.cmd.requestData, uint64(len(data)))
 	if opts.CAS > 0 {
-		b.cmd.data = append(b.cmd.data, " C"...)
-		b.cmd.data = appendNumber(b.cmd.data, opts.CAS)
+		b.cmd.requestData = append(b.cmd.requestData, " C"...)
+		b.cmd.requestData = appendNumber(b.cmd.requestData, opts.CAS)
 	}
 
 	if opts.TTL > 0 {
-		b.cmd.data = append(b.cmd.data, " T"...)
-		b.cmd.data = appendNumber(b.cmd.data, uint64(opts.TTL))
+		b.cmd.requestData = append(b.cmd.requestData, " T"...)
+		b.cmd.requestData = appendNumber(b.cmd.requestData, uint64(opts.TTL))
 	}
 
-	b.cmd.data = append(b.cmd.data, "\r\n"...)
+	b.cmd.requestData = append(b.cmd.requestData, "\r\n"...)
 
-	b.cmd.data = append(b.cmd.data, data...)
-	b.cmd.data = append(b.cmd.data, "\r\n"...)
+	b.cmd.requestData = append(b.cmd.requestData, data...)
+	b.cmd.requestData = append(b.cmd.requestData, "\r\n"...)
 }
 
 func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
 	b.cmd.cmdCount++
 
-	b.cmd.data = append(b.cmd.data, "md "...)
-	b.cmd.data = append(b.cmd.data, key...)
+	b.cmd.requestData = append(b.cmd.requestData, "md "...)
+	b.cmd.requestData = append(b.cmd.requestData, key...)
 
 	if opts.CAS > 0 {
-		b.cmd.data = append(b.cmd.data, " C"...)
-		b.cmd.data = appendNumber(b.cmd.data, opts.CAS)
+		b.cmd.requestData = append(b.cmd.requestData, " C"...)
+		b.cmd.requestData = appendNumber(b.cmd.requestData, opts.CAS)
 	}
 
 	if opts.I {
-		b.cmd.data = append(b.cmd.data, " I"...)
+		b.cmd.requestData = append(b.cmd.requestData, " I"...)
 		if opts.TTL > 0 {
-			b.cmd.data = append(b.cmd.data, " T"...)
-			b.cmd.data = appendNumber(b.cmd.data, uint64(opts.TTL))
+			b.cmd.requestData = append(b.cmd.requestData, " T"...)
+			b.cmd.requestData = appendNumber(b.cmd.requestData, uint64(opts.TTL))
 		}
 	}
 
-	b.cmd.data = append(b.cmd.data, "\r\n"...)
+	b.cmd.requestData = append(b.cmd.requestData, "\r\n"...)
 }
 
 func (b *cmdBuilder) addFlushAll() {
 	b.cmd.cmdCount++
-	b.cmd.data = append(b.cmd.data, "flush_all\r\n"...)
+	b.cmd.requestData = append(b.cmd.requestData, "flush_all\r\n"...)
 }
 
 func (b *cmdBuilder) getCmd() *commandData {

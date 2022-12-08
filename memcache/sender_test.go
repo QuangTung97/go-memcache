@@ -17,7 +17,7 @@ import (
 func newCommandFromString(s string) *commandData {
 	cmd := newCommand()
 	cmd.cmdCount = 1
-	cmd.data = []byte(s)
+	cmd.requestData = []byte(s)
 	return cmd
 }
 
@@ -41,8 +41,8 @@ func TestSender_Publish(t *testing.T) {
 	cmdList := make([]*commandData, 10)
 	n := s.readSentCommands(cmdList)
 	assert.Equal(t, 2, n)
-	assert.Equal(t, "", string(cmdList[0].data))
-	assert.Equal(t, "", string(cmdList[1].data))
+	assert.Equal(t, "", string(cmdList[0].responseData))
+	assert.Equal(t, "", string(cmdList[1].responseData))
 }
 
 func TestSender_Publish_Concurrent(t *testing.T) {
@@ -326,15 +326,15 @@ func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {
 
 	output := b.popAll(nil)
 	assert.Equal(t, 2, len(output))
-	commands[string(output[0].data)] = struct{}{}
-	commands[string(output[1].data)] = struct{}{}
+	commands[string(output[0].requestData)] = struct{}{}
+	commands[string(output[1].requestData)] = struct{}{}
 
 	wg.Wait()
 
 	output = b.popAll(nil)
 	assert.Equal(t, 2, len(output))
-	commands[string(output[0].data)] = struct{}{}
-	commands[string(output[1].data)] = struct{}{}
+	commands[string(output[0].requestData)] = struct{}{}
+	commands[string(output[1].requestData)] = struct{}{}
 
 	assert.Equal(t, map[string]struct{}{
 		"mg key01 v\r\n": {},

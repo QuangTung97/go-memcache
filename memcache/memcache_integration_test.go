@@ -2,8 +2,11 @@ package memcache
 
 import (
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"net"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -36,7 +39,7 @@ func TestClient_Connection_Error_And_Retry(t *testing.T) {
 	globalNetDial = func(network, address string) (net.Conn, error) {
 		atomic.AddUint64(&counter, 1)
 
-		if counter > 1 && counter < 5 { // 2, 3, 4 => 30 millisecond
+		if counter > 1 && counter < 5 { // skip 2, and then 3, 4 => 30 millisecond total
 			return nil, errors.New("cannot connect to memcached")
 		}
 
@@ -59,6 +62,8 @@ func TestClient_Connection_Error_And_Retry(t *testing.T) {
 
 	p := c.Pipeline()
 	defer p.Finish()
+
+	pipelineFlushAll(p)
 
 	resp, err := p.MGet("key01", MGetOptions{})()
 	assert.Equal(t, nil, err)
@@ -90,10 +95,15 @@ func TestClient_Connection_Error_And_Retry(t *testing.T) {
 type connRecorder struct {
 	data []byte
 	net.Conn
+
+	writeErr error
 }
 
 func (c *connRecorder) Write(b []byte) (n int, err error) {
 	c.data = append(c.data, b...)
+	if c.writeErr != nil {
+		return 0, c.writeErr
+	}
 	return c.Conn.Write(b)
 }
 
@@ -186,4 +196,75 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 
 	assert.Equal(t, "ms key01 13\r\nsome value 01\r\n", string(recorder1.data))
 	assert.Equal(t, "ms key02 13\r\nsome value 02\r\n", string(recorder2.data))
+}
+
+func TestClient_Retry_On_TCP_Conn_Close__Error_EOF(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		doTestClientRetryOnTCPConnCloseErrorEOF(t)
+	}
+}
+
+func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
+	var recorder *connRecorder
+	globalNetDial = func(network, address string) (net.Conn, error) {
+		conn, err := net.Dial(network, address)
+		if err != nil {
+			panic(err)
+		}
+		recorder = &connRecorder{
+			Conn: conn,
+		}
+		return recorder, nil
+	}
+	defer resetGlobalNetDial()
+
+	c, err := New("localhost:11211", 1, WithDialErrorLogger(func(err error) {
+		fmt.Println("CONNECTION ERROR:", err)
+	}))
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	err = p.FlushAll()()
+	assert.Equal(t, nil, err)
+
+	resp, err := p.MSet("key01", []byte("some value 01"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, resp)
+
+	recorder.writeErr = io.EOF
+
+	resp, err = p.MSet("key01", []byte("some value 02"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, resp)
+}
+
+func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
+	t.Skip()
+
+	globalNetDial = func(network, address string) (net.Conn, error) {
+		return net.Dial(network, address)
+	}
+	defer resetGlobalNetDial()
+
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	for i := 0; i < 100; i++ {
+		now := time.Now()
+		resp, err := p.MSet("key01", []byte("some value 01"), MSetOptions{})()
+		fmt.Println("DURATION:", time.Since(now))
+		if err != nil {
+			fmt.Println(reflect.TypeOf(err))
+			fmt.Println(err)
+		}
+		fmt.Println(resp)
+		time.Sleep(1 * time.Second)
+	}
 }

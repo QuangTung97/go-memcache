@@ -55,19 +55,29 @@ func newConn(addr string, options ...Option) (*clientConn, error) {
 	go func() {
 		defer c.wg.Done()
 
+		retryErrorCount := 0
 		for {
 			c.core.waitForError()
 			if c.core.isShuttingDown() {
 				return
 			}
 
-			nc, err := netDialNewConn(addr, opts)
+			nc, err = netDialNewConn(addr, opts)
 			if err != nil {
+				opts.dialErrorLogger(err)
+
+				if retryErrorCount == 0 {
+					c.core.sender.increaseEpochAndSetError(err)
+				}
+				retryErrorCount++
+
 				time.Sleep(opts.retryDuration)
 				continue
 			}
 
 			c.core.resetNetConn(nc)
+			retryErrorCount = 0
+			continue
 		}
 	}()
 

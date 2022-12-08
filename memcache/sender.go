@@ -51,9 +51,12 @@ func putBytesToPool(data []byte) {
 type commandData struct {
 	cmdCount int
 
-	data      []byte // for request and response data
+	requestData  []byte
+	responseData []byte
+
 	completed bool
 
+	epoch  uint64
 	reader io.ReadCloser
 
 	lastErr error
@@ -64,15 +67,24 @@ type commandData struct {
 
 func newCommand() *commandData {
 	c := &commandData{
-		data: getBytesFromPool(),
+		requestData: getBytesFromPool(),
 	}
 	c.cond = sync.NewCond(&c.mut)
 	return c
 }
 
+func (c *commandData) cloneShareRequest() *commandData {
+	result := &commandData{
+		cmdCount:    c.cmdCount,
+		requestData: c.requestData,
+	}
+	result.cond = sync.NewCond(&result.mut)
+	return result
+}
+
 func freeCommandData(cmd *commandData) {
-	putBytesToPool(cmd.data)
-	cmd.data = nil
+	putBytesToPool(cmd.requestData)
+	putBytesToPool(cmd.responseData)
 }
 
 func (c *commandData) waitCompleted() {
@@ -99,11 +111,11 @@ func (c *commandData) setCompleted(err error) {
 
 type sender struct {
 	//---- protected by ncMut ------
-	nc       netConn
-	ncMut    sync.Mutex
-	tmpBuf   []*commandData
-	dataList [][]byte
+	nc     netConn
+	ncMut  sync.Mutex
+	tmpBuf []*commandData
 
+	epoch       uint64
 	lastErr     error
 	ncErrorCond *sync.Cond
 	//---- end ncMut protection ----
@@ -288,8 +300,8 @@ func (s *sender) writeAndFlush() error {
 		return s.lastErr
 	}
 
-	for _, data := range s.dataList {
-		_, err := s.nc.writer.Write(data)
+	for _, cmd := range s.tmpBuf {
+		_, err := s.nc.writer.Write(cmd.requestData)
 		if err != nil {
 			s.setLastErrorAndClose(err)
 			return err
@@ -312,21 +324,15 @@ func (s *sender) sendToWriter() {
 
 	for _, cmd := range s.tmpBuf {
 		cmd.reader = s.nc.reader
-		s.dataList = append(s.dataList, cmd.data)
-		cmd.data = getBytesFromPool()
+		if s.lastErr == nil {
+			cmd.epoch = s.epoch
+		}
 	}
 
 	s.recv.push(s.tmpBuf)
 
 	// flush to tcp socket
 	err := s.writeAndFlush()
-
-	// clear data list
-	for _, data := range s.dataList {
-		putBytesToPool(data)
-	}
-	s.dataList = s.dataList[:0]
-
 	if err != nil {
 		s.replyErrorToCmdInTmpBuf(err)
 		s.ncMut.Unlock()
@@ -359,23 +365,48 @@ func (s *sender) waitForError() {
 	s.ncMut.Unlock()
 }
 
+// setNetConnError used inside *sender.go*
 func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
 	s.ncMut.Lock()
-	if s.nc.reader == prevReader {
-		s.lastErr = err
+	if s.lastErr != ErrConnClosed {
+		if s.nc.reader == prevReader {
+			s.lastErr = err
+		}
 	}
 	s.ncMut.Unlock()
 
 	s.ncErrorCond.Signal()
 }
 
+// waitForNewEpoch used inside *pipeline.go*
+func (s *sender) waitForNewEpoch(waitEpoch uint64) error {
+	s.ncMut.Lock()
+	for s.lastErr != ErrConnClosed && s.epoch <= waitEpoch {
+		s.ncErrorCond.Wait()
+	}
+	err := s.lastErr
+	s.ncMut.Unlock()
+	return err
+}
+
+// increaseEpochAndSetError used inside *conn.go*
+func (s *sender) increaseEpochAndSetError(err error) {
+	s.ncMut.Lock()
+	s.epoch++
+	s.lastErr = err
+	s.ncMut.Unlock()
+
+	s.ncErrorCond.Broadcast()
+}
+
 func (s *sender) resetNetConn(nc netConn) {
 	s.ncMut.Lock()
+	s.epoch++
 	s.nc = nc
 	s.lastErr = nil
 	s.ncMut.Unlock()
 
-	s.ncErrorCond.Signal()
+	s.ncErrorCond.Broadcast()
 }
 
 func (s *sender) closeNetConn() error {
@@ -387,7 +418,7 @@ func (s *sender) closeNetConn() error {
 
 	s.ncMut.Unlock()
 
-	s.ncErrorCond.Signal()
+	s.ncErrorCond.Broadcast()
 
 	return err
 }
