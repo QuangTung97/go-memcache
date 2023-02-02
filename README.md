@@ -19,7 +19,7 @@ https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 
 ### Examples
 
-Examples can be found here: https://github.com/QuangTung97/go-memcache/tree/main/examples
+Examples can be found here: https://github.com/QuangTung97/go-memcache/tree/master/examples
 
 ```go
 pipeline := client.Pipeline()
