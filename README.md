@@ -67,8 +67,8 @@ The line `defer pipeline.Finish()` is the best practise for preventing cases lik
 pipeline := client.Pipeline()
 defer pipeline.Finish()
 
-pipeline.MGet("KEY01", memcache.MGetOptions{CAS: true})
-pipeline.MGet("KEY02", memcache.MGetOptions{CAS: true})
+pipeline.MSet("KEY01", []byte("key data 01"), memcache.MSetOptions{})
+pipeline.MSet("KEY02", []byte("key data 02"), memcache.MSetOptions{})
 ```
 
 without `pipeline.Finish()` the two set commands will **NOT** be delivered to the memcached server.
