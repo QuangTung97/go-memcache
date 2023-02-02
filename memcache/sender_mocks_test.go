@@ -13,22 +13,22 @@ var _ FlushWriter = &FlushWriterMock{}
 
 // FlushWriterMock is a mock implementation of FlushWriter.
 //
-// 	func TestSomethingThatUsesFlushWriter(t *testing.T) {
+//	func TestSomethingThatUsesFlushWriter(t *testing.T) {
 //
-// 		// make and configure a mocked FlushWriter
-// 		mockedFlushWriter := &FlushWriterMock{
-// 			FlushFunc: func() error {
-// 				panic("mock out the Flush method")
-// 			},
-// 			WriteFunc: func(p []byte) (int, error) {
-// 				panic("mock out the Write method")
-// 			},
-// 		}
+//		// make and configure a mocked FlushWriter
+//		mockedFlushWriter := &FlushWriterMock{
+//			FlushFunc: func() error {
+//				panic("mock out the Flush method")
+//			},
+//			WriteFunc: func(p []byte) (int, error) {
+//				panic("mock out the Write method")
+//			},
+//		}
 //
-// 		// use mockedFlushWriter in code that requires FlushWriter
-// 		// and then make assertions.
+//		// use mockedFlushWriter in code that requires FlushWriter
+//		// and then make assertions.
 //
-// 	}
+//	}
 type FlushWriterMock struct {
 	// FlushFunc mocks the Flush method.
 	FlushFunc func() error
@@ -66,7 +66,8 @@ func (mock *FlushWriterMock) Flush() error {
 
 // FlushCalls gets all the calls that were made to Flush.
 // Check the length with:
-//     len(mockedFlushWriter.FlushCalls())
+//
+//	len(mockedFlushWriter.FlushCalls())
 func (mock *FlushWriterMock) FlushCalls() []struct {
 } {
 	var calls []struct {
@@ -95,7 +96,8 @@ func (mock *FlushWriterMock) Write(p []byte) (int, error) {
 
 // WriteCalls gets all the calls that were made to Write.
 // Check the length with:
-//     len(mockedFlushWriter.WriteCalls())
+//
+//	len(mockedFlushWriter.WriteCalls())
 func (mock *FlushWriterMock) WriteCalls() []struct {
 	P []byte
 } {
@@ -114,19 +116,19 @@ var _ closerInterface = &closerInterfaceMock{}
 
 // closerInterfaceMock is a mock implementation of closerInterface.
 //
-// 	func TestSomethingThatUsescloserInterface(t *testing.T) {
+//	func TestSomethingThatUsescloserInterface(t *testing.T) {
 //
-// 		// make and configure a mocked closerInterface
-// 		mockedcloserInterface := &closerInterfaceMock{
-// 			CloseFunc: func() error {
-// 				panic("mock out the Close method")
-// 			},
-// 		}
+//		// make and configure a mocked closerInterface
+//		mockedcloserInterface := &closerInterfaceMock{
+//			CloseFunc: func() error {
+//				panic("mock out the Close method")
+//			},
+//		}
 //
-// 		// use mockedcloserInterface in code that requires closerInterface
-// 		// and then make assertions.
+//		// use mockedcloserInterface in code that requires closerInterface
+//		// and then make assertions.
 //
-// 	}
+//	}
 type closerInterfaceMock struct {
 	// CloseFunc mocks the Close method.
 	CloseFunc func() error
@@ -155,7 +157,8 @@ func (mock *closerInterfaceMock) Close() error {
 
 // CloseCalls gets all the calls that were made to Close.
 // Check the length with:
-//     len(mockedcloserInterface.CloseCalls())
+//
+//	len(mockedcloserInterface.CloseCalls())
 func (mock *closerInterfaceMock) CloseCalls() []struct {
 } {
 	var calls []struct {
@@ -172,22 +175,22 @@ var _ readCloserInterface = &readCloserInterfaceMock{}
 
 // readCloserInterfaceMock is a mock implementation of readCloserInterface.
 //
-// 	func TestSomethingThatUsesreadCloserInterface(t *testing.T) {
+//	func TestSomethingThatUsesreadCloserInterface(t *testing.T) {
 //
-// 		// make and configure a mocked readCloserInterface
-// 		mockedreadCloserInterface := &readCloserInterfaceMock{
-// 			CloseFunc: func() error {
-// 				panic("mock out the Close method")
-// 			},
-// 			ReadFunc: func(p []byte) (int, error) {
-// 				panic("mock out the Read method")
-// 			},
-// 		}
+//		// make and configure a mocked readCloserInterface
+//		mockedreadCloserInterface := &readCloserInterfaceMock{
+//			CloseFunc: func() error {
+//				panic("mock out the Close method")
+//			},
+//			ReadFunc: func(p []byte) (int, error) {
+//				panic("mock out the Read method")
+//			},
+//		}
 //
-// 		// use mockedreadCloserInterface in code that requires readCloserInterface
-// 		// and then make assertions.
+//		// use mockedreadCloserInterface in code that requires readCloserInterface
+//		// and then make assertions.
 //
-// 	}
+//	}
 type readCloserInterfaceMock struct {
 	// CloseFunc mocks the Close method.
 	CloseFunc func() error
@@ -225,7 +228,8 @@ func (mock *readCloserInterfaceMock) Close() error {
 
 // CloseCalls gets all the calls that were made to Close.
 // Check the length with:
-//     len(mockedreadCloserInterface.CloseCalls())
+//
+//	len(mockedreadCloserInterface.CloseCalls())
 func (mock *readCloserInterfaceMock) CloseCalls() []struct {
 } {
 	var calls []struct {
@@ -254,7 +258,8 @@ func (mock *readCloserInterfaceMock) Read(p []byte) (int, error) {
 
 // ReadCalls gets all the calls that were made to Read.
 // Check the length with:
-//     len(mockedreadCloserInterface.ReadCalls())
+//
+//	len(mockedreadCloserInterface.ReadCalls())
 func (mock *readCloserInterfaceMock) ReadCalls() []struct {
 	P []byte
 } {

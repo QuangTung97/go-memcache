@@ -29,9 +29,9 @@ func NoopFlusher(w io.Writer) FlushWriter {
 	return noopFlusher{Writer: w}
 }
 
-//=====================
+// =====================
 // Pool of Bytes
-//=====================
+// =====================
 var requestBytesPool = bytesPool{
 	pool: sync.Pool{
 		New: func() interface{} {
@@ -141,9 +141,9 @@ type sender struct {
 	recv recvBuffer
 }
 
-//----------------------------------
+// ----------------------------------
 // Send Buffer
-//----------------------------------
+// ----------------------------------
 type sendBuffer struct {
 	buf    []*commandData
 	maxLen int
@@ -182,9 +182,9 @@ func (b *sendBuffer) push(cmd *commandData) (isLeader bool) {
 	return prevLen == 0
 }
 
-//----------------------------------
+// ----------------------------------
 // Receiving Buffer
-//----------------------------------
+// ----------------------------------
 type recvBuffer struct {
 	buf []*commandData
 	mut sync.Mutex
