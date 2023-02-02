@@ -5,7 +5,7 @@
 
 ### Why this Library?
 
-This library is a library for using Memcached.
+A Simple Memcached Client Library.
 
 Similar to: https://github.com/bradfitz/gomemcache
 
