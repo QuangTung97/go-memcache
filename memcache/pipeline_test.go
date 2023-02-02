@@ -479,6 +479,37 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	}, getResp)
 }
 
+func TestPipeline_Execute__When_Empty_Commands(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	p.Execute()
+
+	fn1 := p.MSet("KEY01", []byte("some data"), MSetOptions{})
+	fn2 := p.MGet("KEY01", MGetOptions{})
+
+	setResp, err := fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, setResp)
+
+	getResp, err := fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some data"),
+	}, getResp)
+
+	p.Execute()
+}
+
 func TestPipeline_Not_Blocking__When_Wait_For_Response__After_Close(t *testing.T) {
 	for i := 0; i < 4000; i++ {
 		func() {
