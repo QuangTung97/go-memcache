@@ -1,4 +1,4 @@
-.PHONY: lint test test-race benchmark install-tools
+.PHONY: lint test test-race benchmark install-tools coverage
 
 lint:
 	$(foreach f,$(shell go fmt ./...),@echo "Forgot to format file: ${f}"; exit 1;)
@@ -17,3 +17,6 @@ benchmark:
 install-tools:
 	go install github.com/matryer/moq
 	go install github.com/mgechev/revive
+
+coverage:
+	go tool cover -func coverage.out | grep ^total
