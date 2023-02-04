@@ -25,7 +25,7 @@ type pipelineCmd struct {
 	sess *pipelineSession
 
 	cmdType commandType
-	resp    interface{}
+	resp    any
 	err     error
 
 	isRead bool

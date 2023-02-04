@@ -34,7 +34,7 @@ func NoopFlusher(w io.Writer) FlushWriter {
 // =====================
 var requestBytesPool = bytesPool{
 	pool: sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return make([]byte, 0, 256)
 		},
 	},
@@ -42,7 +42,7 @@ var requestBytesPool = bytesPool{
 
 var responseBytesPool = bytesPool{
 	pool: sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return make([]byte, 0, 1024)
 		},
 	},
@@ -277,6 +277,29 @@ type netConn struct {
 	writer FlushWriter
 	closer io.Closer
 	reader io.ReadCloser
+}
+
+type errorConn struct {
+	err error
+}
+
+func (w *errorConn) Write([]byte) (n int, err error) {
+	return 0, w.err
+}
+
+func (w *errorConn) Read([]byte) (n int, err error) {
+	return 0, w.err
+}
+
+func errorNetConn(err error) netConn {
+	conn := &errorConn{
+		err: err,
+	}
+	return netConn{
+		writer: NoopFlusher(conn),
+		closer: io.NopCloser(nil),
+		reader: io.NopCloser(conn),
+	}
 }
 
 func newSender(nc netConn, bufSizeLog int) *sender {

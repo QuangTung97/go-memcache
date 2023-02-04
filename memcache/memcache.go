@@ -20,11 +20,7 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 	conns := make([]*clientConn, 0, numConns)
 
 	for i := 0; i < numConns; i++ {
-		c, err := newConn(addr, options...)
-		if err != nil {
-			closeClientConns(conns)
-			return nil, err
-		}
+		c := newConn(addr, options...)
 		conns = append(conns, c)
 	}
 
@@ -32,12 +28,6 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 		conns: conns,
 		next:  0,
 	}, nil
-}
-
-func closeClientConns(conns []*clientConn) {
-	for _, c := range conns {
-		_ = c.shutdown()
-	}
 }
 
 // Close shut down Client

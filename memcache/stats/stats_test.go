@@ -35,6 +35,10 @@ func (c *connTest) Write(b []byte) (n int, err error) {
 	return len(b), nil
 }
 
+func (c *connTest) Close() error {
+	return nil
+}
+
 func newClientTest(t *testing.T, reader io.Reader) *clientTest {
 	nc := &connTest{
 		reader: reader,
@@ -48,8 +52,8 @@ func newClientTest(t *testing.T, reader io.Reader) *clientTest {
 	}
 	defer func() { globalNetDial = net.Dial }()
 
-	client, err := New("localhost:11211")
-	assert.Equal(t, nil, err)
+	client := New("localhost:11211")
+	t.Cleanup(func() { _ = client.Close() })
 
 	c.client = client
 	return c
@@ -170,10 +174,36 @@ func TestStatsClient(t *testing.T) {
 					ChunksPerPage: 3449,
 					TotalPages:    928,
 					TotalChunks:   3200672,
+					UsedChunks:    3200000,
 				},
 			},
 		}, slabs)
 
 		assert.Equal(t, []byte("stats slabs\r\n"), c.nc.writeBytes)
+	})
+}
+
+func TestMemcache__Connect_Error(t *testing.T) {
+	t.Run("without-logger", func(t *testing.T) {
+		c := New("localhost:228899")
+		defer func() { _ = c.Close() }()
+
+		stats, err := c.GetSlabsStats()
+		assert.Error(t, err)
+		assert.Equal(t, SlabsStats{}, stats)
+	})
+
+	t.Run("with-logger", func(t *testing.T) {
+		var logErr error
+		c := New("localhost:228899", WithErrorLogger(func(err error) {
+			logErr = err
+		}))
+		defer func() { _ = c.Close() }()
+
+		assert.Error(t, logErr)
+
+		stats, err := c.GetSlabsStats()
+		assert.Equal(t, logErr, err)
+		assert.Equal(t, SlabsStats{}, stats)
 	})
 }

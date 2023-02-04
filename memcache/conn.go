@@ -39,12 +39,13 @@ func netDialNewConn(addr string, options *memcacheOptions) (netConn, error) {
 	}, nil
 }
 
-func newConn(addr string, options ...Option) (*clientConn, error) {
+func newConn(addr string, options ...Option) *clientConn {
 	opts := computeOptions(options...)
 
 	nc, err := netDialNewConn(addr, opts)
 	if err != nil {
-		return nil, err
+		opts.dialErrorLogger(err)
+		nc = errorNetConn(err)
 	}
 
 	c := &clientConn{
@@ -81,7 +82,7 @@ func newConn(addr string, options ...Option) (*clientConn, error) {
 		}
 	}()
 
-	return c, nil
+	return c
 }
 
 func (c *clientConn) pushCommand(cmd *commandData) {

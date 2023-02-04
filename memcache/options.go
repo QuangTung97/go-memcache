@@ -1,6 +1,9 @@
 package memcache
 
-import "time"
+import (
+	"log"
+	"time"
+)
 
 type memcacheOptions struct {
 	retryDuration time.Duration
@@ -19,7 +22,9 @@ func computeOptions(options ...Option) *memcacheOptions {
 		bufferSize:    16 * 1024,
 
 		tcpKeepAliveDuration: 5 * time.Minute,
-		dialErrorLogger:      func(err error) {},
+		dialErrorLogger: func(err error) {
+			log.Println("[ERROR] Memcache dial error:", err)
+		},
 	}
 	for _, o := range options {
 		o(opts)

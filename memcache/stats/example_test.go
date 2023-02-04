@@ -7,9 +7,7 @@ import (
 )
 
 func TestExample_General(t *testing.T) {
-	c, err := New("localhost:11211")
-	assert.Equal(t, nil, err)
-
+	c := New("localhost:11211")
 	defer func() { _ = c.Close() }()
 
 	stats, err := c.GetGeneralStats()
@@ -19,9 +17,7 @@ func TestExample_General(t *testing.T) {
 }
 
 func TestExample_Slab(t *testing.T) {
-	c, err := New("localhost:11211")
-	assert.Equal(t, nil, err)
-
+	c := New("localhost:11211")
 	defer func() { _ = c.Close() }()
 
 	stats, err := c.GetSlabsStats()
@@ -31,9 +27,7 @@ func TestExample_Slab(t *testing.T) {
 }
 
 func TestExample_General__Then_Slab(t *testing.T) {
-	c, err := New("localhost:11211")
-	assert.Equal(t, nil, err)
-
+	c := New("localhost:11211")
 	defer func() { _ = c.Close() }()
 
 	general, err := c.GetGeneralStats()

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"io"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -20,17 +21,38 @@ type Client struct {
 // for testing
 var globalNetDial = net.Dial
 
-// New ...
-func New(addr string) (*Client, error) {
-	nc, err := netDialNewConn(addr)
-	if err != nil {
-		return nil, err
+type dialConfig struct {
+	errorLogger func(err error)
+}
+
+// Option ...
+type Option func(conf *dialConfig)
+
+// WithErrorLogger ...
+func WithErrorLogger(logger func(err error)) Option {
+	return func(conf *dialConfig) {
+		conf.errorLogger = logger
 	}
+}
+
+// New ...
+func New(addr string, options ...Option) *Client {
+	conf := &dialConfig{
+		errorLogger: func(err error) {
+			log.Println("[ERROR] Dial memcache for stats with error:", err)
+		},
+	}
+
+	for _, opt := range options {
+		opt(conf)
+	}
+
+	nc := netDialNewConn(addr, conf)
 
 	return &Client{
 		nc:     nc,
 		parser: newStatsParser(nc.reader),
-	}, nil
+	}
 }
 
 // GeneralStats ...
@@ -86,6 +108,7 @@ type SingleSlabStats struct {
 	ChunksPerPage uint32
 	TotalPages    uint32
 	TotalChunks   uint64
+	UsedChunks    uint64
 }
 
 // SlabsStats ...
@@ -97,7 +120,7 @@ type SlabsStats struct {
 	Slabs   map[uint32]SingleSlabStats
 }
 
-//revive:disable-next-line:cognitive-complexity
+//revive:disable-next-line:cognitive-complexity,cyclomatic
 func (s *SlabsStats) parseSlabStat(item statItem) error {
 	fields := strings.Split(item.key, ":")
 	if len(fields) < 2 {
@@ -147,6 +170,13 @@ func (s *SlabsStats) parseSlabStat(item statItem) error {
 			return err
 		}
 		setStat(func(s *SingleSlabStats) { s.TotalChunks = totalChunks })
+
+	case "used_chunks":
+		usedChunks, err := strconv.ParseUint(item.value, 10, 64)
+		if err != nil {
+			return err
+		}
+		setStat(func(s *SingleSlabStats) { s.UsedChunks = usedChunks })
 
 	default:
 	}
@@ -199,25 +229,46 @@ type statItem struct {
 
 type netConn struct {
 	writer memcache.FlushWriter
-	closer io.Closer
 	reader io.ReadCloser
 }
 
-func netDialNewConn(addr string) (netConn, error) {
+type errorConn struct {
+	err error
+}
+
+func (w *errorConn) Write([]byte) (n int, err error) {
+	return 0, w.err
+}
+
+func (w *errorConn) Read([]byte) (n int, err error) {
+	return 0, w.err
+}
+
+func errorNetConn(err error) netConn {
+	conn := &errorConn{
+		err: err,
+	}
+	return netConn{
+		writer: memcache.NoopFlusher(conn),
+		reader: io.NopCloser(conn),
+	}
+}
+
+func netDialNewConn(addr string, conf *dialConfig) netConn {
 	nc, err := globalNetDial("tcp", addr)
 	if err != nil {
-		return netConn{}, err
+		conf.errorLogger(err)
+		return errorNetConn(err)
 	}
 
 	writer := bufio.NewWriterSize(nc, 4*1024)
 	return netConn{
 		reader: nc,
 		writer: writer,
-		closer: nc,
-	}, nil
+	}
 }
 
 // Close ...
 func (c *Client) Close() error {
-	return c.nc.closer.Close()
+	return c.nc.reader.Close()
 }

@@ -13,8 +13,7 @@ func connFlushAll(c *clientConn) {
 }
 
 func TestConn_Simple_Get_Miss(t *testing.T) {
-	c, err := newConn("localhost:11211")
-	assert.Equal(t, nil, err)
+	c := newConn("localhost:11211")
 	defer func() {
 		_ = c.shutdown()
 		c.waitCloseCompleted()
@@ -30,8 +29,7 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 }
 
 func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
-	c, err := newConn("localhost:11211")
-	assert.Equal(t, nil, err)
+	c := newConn("localhost:11211")
 	defer func() {
 		_ = c.shutdown()
 		c.waitCloseCompleted()
@@ -48,8 +46,7 @@ func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 }
 
 func TestConn_Set_Get(t *testing.T) {
-	c, err := newConn("localhost:11211")
-	assert.Equal(t, nil, err)
+	c := newConn("localhost:11211")
 	defer func() {
 		_ = c.shutdown()
 		c.waitCloseCompleted()
@@ -76,8 +73,7 @@ func TestConn_Set_Get(t *testing.T) {
 }
 
 func TestConn_Shutdown(t *testing.T) {
-	c, err := newConn("localhost:11211")
-	assert.Equal(t, nil, err)
+	c := newConn("localhost:11211")
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
 	c.pushCommand(cmd1)
@@ -85,7 +81,7 @@ func TestConn_Shutdown(t *testing.T) {
 
 	assert.Equal(t, "EN\r\n", string(cmd1.responseData))
 
-	err = c.shutdown()
+	err := c.shutdown()
 	assert.Equal(t, nil, err)
 	c.waitCloseCompleted()
 }

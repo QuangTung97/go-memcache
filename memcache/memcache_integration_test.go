@@ -28,9 +28,20 @@ func TestClient_New_Connect_Error(t *testing.T) {
 	}
 	defer resetGlobalNetDial()
 
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, errors.New("cannot connect to memcached"), err)
-	assert.Nil(t, c)
+	var logErr error
+	c, err := New("localhost:11211", 1, WithDialErrorLogger(func(err error) {
+		logErr = err
+	}))
+	assert.Equal(t, nil, err)
+	assert.Equal(t, errors.New("cannot connect to memcached"), logErr)
+	assert.NotNil(t, c)
+
+	pipe := c.Pipeline()
+	defer pipe.Finish()
+
+	resp, err := pipe.MGet("KEY01", MGetOptions{})()
+	assert.Equal(t, logErr, err)
+	assert.Equal(t, MGetResponse{}, resp)
 }
 
 func TestClient_Connection_Error_And_Retry(t *testing.T) {
