@@ -2,6 +2,7 @@ package memcache
 
 import (
 	"log"
+	"net"
 	"time"
 )
 
@@ -11,6 +12,7 @@ type memcacheOptions struct {
 
 	tcpKeepAliveDuration time.Duration
 	dialErrorLogger      func(err error)
+	dialFunc             func(network, address string) (net.Conn, error)
 }
 
 // Option ...
@@ -25,6 +27,7 @@ func computeOptions(options ...Option) *memcacheOptions {
 		dialErrorLogger: func(err error) {
 			log.Println("[ERROR] Memcache dial error:", err)
 		},
+		dialFunc: net.Dial,
 	}
 	for _, o := range options {
 		o(opts)
@@ -57,5 +60,12 @@ func WithDialErrorLogger(fn func(err error)) Option {
 func WithTCPKeepAliveDuration(d time.Duration) Option {
 	return func(opts *memcacheOptions) {
 		opts.tcpKeepAliveDuration = d
+	}
+}
+
+// WithDialFunc ...
+func WithDialFunc(dialFunc func(network, address string) (net.Conn, error)) Option {
+	return func(opts *memcacheOptions) {
+		opts.dialFunc = dialFunc
 	}
 }

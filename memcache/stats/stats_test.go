@@ -185,7 +185,7 @@ func TestStatsClient(t *testing.T) {
 
 func TestMemcache__Connect_Error(t *testing.T) {
 	t.Run("without-logger", func(t *testing.T) {
-		c := New("localhost:228899")
+		c := New("localhost:2288")
 		defer func() { _ = c.Close() }()
 
 		stats, err := c.GetSlabsStats()
@@ -195,7 +195,7 @@ func TestMemcache__Connect_Error(t *testing.T) {
 
 	t.Run("with-logger", func(t *testing.T) {
 		var logErr error
-		c := New("localhost:228899", WithErrorLogger(func(err error) {
+		c := New("localhost:2288", WithErrorLogger(func(err error) {
 			logErr = err
 		}))
 		defer func() { _ = c.Close() }()

@@ -7,14 +7,11 @@ import (
 	"io"
 	"net"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
-
-func resetGlobalNetDial() {
-	globalNetDial = net.Dial
-}
 
 func TestClient_New_With_NumConns_Zero(t *testing.T) {
 	c, err := New("localhost:11211", 0)
@@ -23,15 +20,21 @@ func TestClient_New_With_NumConns_Zero(t *testing.T) {
 }
 
 func TestClient_New_Connect_Error(t *testing.T) {
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string) (net.Conn, error) {
 		return nil, errors.New("cannot connect to memcached")
 	}
-	defer resetGlobalNetDial()
 
+	var mut sync.Mutex
 	var logErr error
-	c, err := New("localhost:11211", 1, WithDialErrorLogger(func(err error) {
-		logErr = err
-	}))
+
+	c, err := New("localhost:11211", 1,
+		WithDialFunc(dialFunc),
+		WithDialErrorLogger(func(err error) {
+			mut.Lock()
+			defer mut.Unlock()
+			logErr = err
+		}),
+	)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, errors.New("cannot connect to memcached"), logErr)
 	assert.NotNil(t, c)
@@ -40,14 +43,18 @@ func TestClient_New_Connect_Error(t *testing.T) {
 	defer pipe.Finish()
 
 	resp, err := pipe.MGet("KEY01", MGetOptions{})()
+
+	mut.Lock()
 	assert.Equal(t, logErr, err)
+	mut.Unlock()
+
 	assert.Equal(t, MGetResponse{}, resp)
 }
 
 func TestClient_Connection_Error_And_Retry(t *testing.T) {
 	counter := uint64(0)
 	var connection net.Conn
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string) (net.Conn, error) {
 		atomic.AddUint64(&counter, 1)
 
 		if counter > 1 && counter < 5 { // skip 2, and then 3, 4 => 30 millisecond total
@@ -62,9 +69,9 @@ func TestClient_Connection_Error_And_Retry(t *testing.T) {
 
 		return connection, nil
 	}
-	defer resetGlobalNetDial()
 
 	c, err := New("localhost:11211", 1,
+		WithDialFunc(dialFunc),
 		WithRetryDuration(10*time.Millisecond),
 		WithTCPKeepAliveDuration(30*time.Second),
 	)
@@ -120,7 +127,7 @@ func (c *connRecorder) Write(b []byte) (n int, err error) {
 
 func TestClient_PushData_To_Connection_Correctly(t *testing.T) {
 	var recorder *connRecorder
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string) (net.Conn, error) {
 		conn, err := net.Dial(network, address)
 		if err != nil {
 			panic(err)
@@ -130,9 +137,8 @@ func TestClient_PushData_To_Connection_Correctly(t *testing.T) {
 		}
 		return recorder, nil
 	}
-	defer resetGlobalNetDial()
 
-	c, err := New("localhost:11211", 1, WithBufferSize(64*1024))
+	c, err := New("localhost:11211", 1, WithDialFunc(dialFunc), WithBufferSize(64*1024))
 	assert.Equal(t, nil, err)
 	defer func() { _ = c.Close() }()
 
@@ -162,7 +168,7 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 	var recorder2 *connRecorder
 
 	counter := 0
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string) (net.Conn, error) {
 		counter++
 
 		conn, err := net.Dial(network, address)
@@ -181,13 +187,12 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 
 		return recorder, nil
 	}
-	defer resetGlobalNetDial()
 
-	c1, err := New("localhost:11211", 1)
+	c1, err := New("localhost:11211", 1, WithDialFunc(dialFunc))
 	assert.Equal(t, nil, err)
 	defer func() { _ = c1.Close() }()
 
-	c2, err := New("localhost:11211", 1)
+	c2, err := New("localhost:11211", 1, WithDialFunc(dialFunc))
 	assert.Equal(t, nil, err)
 	defer func() { _ = c2.Close() }()
 
@@ -217,7 +222,7 @@ func TestClient_Retry_On_TCP_Conn_Close__Error_EOF(t *testing.T) {
 
 func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
 	var recorder *connRecorder
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string) (net.Conn, error) {
 		conn, err := net.Dial(network, address)
 		if err != nil {
 			panic(err)
@@ -227,9 +232,8 @@ func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
 		}
 		return recorder, nil
 	}
-	defer resetGlobalNetDial()
 
-	c, err := New("localhost:11211", 1, WithDialErrorLogger(func(err error) {
+	c, err := New("localhost:11211", 1, WithDialFunc(dialFunc), WithDialErrorLogger(func(err error) {
 		fmt.Println("CONNECTION ERROR:", err)
 	}))
 	assert.Equal(t, nil, err)
@@ -256,12 +260,10 @@ func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
 	// TODO Add Test Cases
 	t.Skip()
 
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string) (net.Conn, error) {
 		return net.Dial(network, address)
 	}
-	defer resetGlobalNetDial()
-
-	c, err := New("localhost:11211", 1)
+	c, err := New("localhost:11211", 1, WithDialFunc(dialFunc))
 	assert.Equal(t, nil, err)
 	defer func() { _ = c.Close() }()
 

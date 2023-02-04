@@ -12,11 +12,8 @@ type clientConn struct {
 	core *coreConnection
 }
 
-// for testing
-var globalNetDial = net.Dial
-
 func netDialNewConn(addr string, options *memcacheOptions) (netConn, error) {
-	nc, err := globalNetDial("tcp", addr)
+	nc, err := options.dialFunc("tcp", addr)
 	if err != nil {
 		return netConn{}, err
 	}
