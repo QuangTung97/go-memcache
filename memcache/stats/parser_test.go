@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"github.com/stretchr/testify/assert"
@@ -8,10 +9,15 @@ import (
 	"testing"
 )
 
+func newStatsParserTest(input string) *statsParser {
+	scanner := bufio.NewScanner(bytes.NewBuffer([]byte(input)))
+	return newStatsParser(scanner)
+}
+
 func TestStatsParser(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		input := "STAT pid 1\r\nSTAT uptime 14\r\nEND\r\n"
-		p := newStatsParser(bytes.NewBuffer([]byte(input)))
+		p := newStatsParserTest(input)
 
 		assert.Equal(t, true, p.next())
 		assert.Equal(t, nil, p.getError())
@@ -34,7 +40,7 @@ func TestStatsParser(t *testing.T) {
 
 	t.Run("error-not-start-with-stats", func(t *testing.T) {
 		input := "ERR pid 1\r\nSTAT uptime 14\r\nEND\r\n"
-		p := newStatsParser(bytes.NewBuffer([]byte(input)))
+		p := newStatsParserTest(input)
 
 		assert.Equal(t, false, p.next())
 		assert.Equal(t, NewError("line not begin with STAT"), p.getError())
@@ -43,7 +49,7 @@ func TestStatsParser(t *testing.T) {
 
 	t.Run("error-stats-missing-fields", func(t *testing.T) {
 		input := "STAT pid\r\nSTAT uptime 14\r\nEND\r\n"
-		p := newStatsParser(bytes.NewBuffer([]byte(input)))
+		p := newStatsParserTest(input)
 
 		assert.Equal(t, false, p.next())
 		assert.Equal(t, NewError("missing stat fields"), p.getError())
@@ -52,7 +58,7 @@ func TestStatsParser(t *testing.T) {
 
 	t.Run("error-when-empty-line", func(t *testing.T) {
 		input := "\r\n"
-		p := newStatsParser(bytes.NewBuffer([]byte(input)))
+		p := newStatsParserTest(input)
 
 		assert.Equal(t, false, p.next())
 		assert.Equal(t, NewError("empty line"), p.getError())
@@ -61,7 +67,7 @@ func TestStatsParser(t *testing.T) {
 
 	t.Run("error-EOF", func(t *testing.T) {
 		input := ""
-		p := newStatsParser(bytes.NewBuffer([]byte(input)))
+		p := newStatsParserTest(input)
 
 		assert.Equal(t, false, p.next())
 		assert.Equal(t, io.EOF, p.getError())
@@ -81,11 +87,12 @@ func TestStatsParser_IO_Error(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		readErr := errors.New("read error")
 
-		p := newStatsParser(&testReader{
+		scanner := bufio.NewScanner(&testReader{
 			readFunc: func(p []byte) (n int, err error) {
 				return 0, readErr
 			},
 		})
+		p := newStatsParser(scanner)
 
 		assert.Equal(t, false, p.next())
 		assert.Equal(t, readErr, p.getError())

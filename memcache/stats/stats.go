@@ -10,12 +10,13 @@ import (
 	"strings"
 )
 
-// Client is a client for statistics information
+// Client is a client for statistics information & support dump all keys
 // checkout https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 // for more information
 type Client struct {
-	nc     netConn
-	parser *statsParser
+	nc      netConn
+	scanner *bufio.Scanner
+	parser  *statsParser
 }
 
 // for testing
@@ -49,9 +50,12 @@ func New(addr string, options ...Option) *Client {
 
 	nc := netDialNewConn(addr, conf)
 
+	scanner := bufio.NewScanner(nc.reader)
+
 	return &Client{
-		nc:     nc,
-		parser: newStatsParser(nc.reader),
+		nc:      nc,
+		scanner: scanner,
+		parser:  newStatsParser(scanner),
 	}
 }
 
@@ -177,8 +181,6 @@ func (s *SlabsStats) parseSlabStat(item statItem) error {
 			return err
 		}
 		setStat(func(s *SingleSlabStats) { s.UsedChunks = usedChunks })
-
-	default:
 	}
 
 	return nil
@@ -220,6 +222,102 @@ func (c *Client) GetSlabsStats() (SlabsStats, error) {
 	}
 
 	return result, c.parser.getError()
+}
+
+// MetaDumpKey ...
+type MetaDumpKey struct {
+	Key   string
+	Exp   int64
+	LA    int64
+	CAS   uint64
+	Fetch bool
+	Class uint32
+	Size  uint32
+}
+
+//revive:disable-next-line:cyclomatic,cognitive-complexity
+func parseMetaDumpKey(line string) (MetaDumpKey, error) {
+	kvList := strings.Split(line, " ")
+
+	result := MetaDumpKey{}
+
+	for _, kv := range kvList {
+		keyValue := strings.Split(kv, "=")
+		if len(keyValue) < 2 {
+			return MetaDumpKey{}, NewError("missing key value")
+		}
+
+		value := keyValue[1]
+
+		switch keyValue[0] {
+		case "key":
+			result.Key = value
+
+		case "exp":
+			exp, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return MetaDumpKey{}, err
+			}
+			result.Exp = exp
+
+		case "la":
+			la, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return MetaDumpKey{}, err
+			}
+			result.LA = la
+
+		case "cas":
+			cas, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return MetaDumpKey{}, err
+			}
+			result.CAS = cas
+
+		case "fetch":
+			fetch := false
+			if value == "yes" {
+				fetch = true
+			}
+			result.Fetch = fetch
+
+		case "cls":
+			sizeClass, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return MetaDumpKey{}, err
+			}
+			result.Class = uint32(sizeClass)
+
+		case "size":
+			size, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return MetaDumpKey{}, err
+			}
+			result.Size = uint32(size)
+		}
+	}
+	return result, nil
+}
+
+// MetaDumpAll ...
+func (c *Client) MetaDumpAll(scanFunc func(key MetaDumpKey)) error {
+	if err := c.writeCommand("lru_crawler metadump all\r\n"); err != nil {
+		return err
+	}
+
+	for c.scanner.Scan() {
+		line := c.scanner.Text()
+		if line == "END" {
+			return nil
+		}
+
+		key, err := parseMetaDumpKey(line)
+		if err != nil {
+			return err
+		}
+		scanFunc(key)
+	}
+	return c.scanner.Err()
 }
 
 type statItem struct {

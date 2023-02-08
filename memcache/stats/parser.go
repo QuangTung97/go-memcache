@@ -13,8 +13,7 @@ type statsParser struct {
 	scanner *bufio.Scanner
 }
 
-func newStatsParser(reader io.Reader) *statsParser {
-	scanner := bufio.NewScanner(reader)
+func newStatsParser(scanner *bufio.Scanner) *statsParser {
 	return &statsParser{
 		scanner: scanner,
 	}
