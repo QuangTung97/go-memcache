@@ -292,6 +292,40 @@ func TestPipeline_Execute_And_Get_On_The_Same_Pipeline(t *testing.T) {
 	}, resp)
 }
 
+func TestPipeline_Execute_And_Get_Immediately(t *testing.T) {
+	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	p.MSet("key01", []byte("some value 01"), MSetOptions{})
+	p.MSet("key02", []byte("some value 02"), MSetOptions{})
+	p.Execute()
+
+	fn3 := p.MSet("key03", []byte("some value 03"), MSetOptions{})
+	setResp, err := fn3()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 01"),
+	}, resp)
+
+	resp, err = p.MGet("key03", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 03"),
+	}, resp)
+}
+
 func TestPipeline_MSet_MGet_MDel__Invalid_Key_Format(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)

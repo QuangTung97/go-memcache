@@ -129,6 +129,7 @@ func (s *pipelineSession) waitAndParseCmdData() {
 		return
 	}
 	s.alreadyWaited = true
+	s.pipeline.resetPipelineSession()
 
 	currentCmd := s.builder.getCmd()
 	currentCmd.waitCompleted()
@@ -147,6 +148,9 @@ func (p *Pipeline) resetPipelineSession() {
 func (p *Pipeline) getCurrentSession() *pipelineSession {
 	if p.currentSession == nil {
 		p.currentSession = p.newPipelineSession()
+	} else if p.currentSession.published {
+		p.currentSession.waitAndParseCmdData()
+		p.currentSession = p.newPipelineSession()
 	}
 	return p.currentSession
 }
@@ -160,7 +164,6 @@ func (s *pipelineSession) pushCommandsIfNotPublished() {
 	if !s.published {
 		s.published = true
 		s.pushCommands(s.builder.getCmd())
-		s.pipeline.resetPipelineSession()
 	}
 }
 
