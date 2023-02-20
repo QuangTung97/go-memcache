@@ -50,8 +50,7 @@ func New(addr string, options ...Option) *Client {
 
 	nc := netDialNewConn(addr, conf)
 
-	reader := bufio.NewReader(nc.reader)
-	scanner := bufio.NewScanner(reader)
+	scanner := bufio.NewScanner(nc.reader)
 
 	return &Client{
 		nc:      nc,
