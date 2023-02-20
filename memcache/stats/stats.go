@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -251,7 +252,11 @@ func parseMetaDumpKey(line string) (MetaDumpKey, error) {
 
 		switch keyValue[0] {
 		case "key":
-			result.Key = value
+			key, err := url.PathUnescape(value)
+			if err != nil {
+				return MetaDumpKey{}, err
+			}
+			result.Key = key
 
 		case "exp":
 			exp, err := strconv.ParseInt(value, 10, 64)

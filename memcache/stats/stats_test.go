@@ -224,6 +224,39 @@ func TestParseMetaDumpKey(t *testing.T) {
 		}, key)
 	})
 
+	t.Run("key-with-escaped", func(t *testing.T) {
+		key, err := parseMetaDumpKey(`key=KEY01%3A40 exp=-1 la=1675839370 cas=34234 fetch=yes cls=5 size=76`)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, MetaDumpKey{
+			Key:   "KEY01:40",
+			Exp:   -1,
+			LA:    1675839370,
+			CAS:   34234,
+			Fetch: true,
+			Class: 5,
+			Size:  76,
+		}, key)
+	})
+
+	t.Run("key-with-plus", func(t *testing.T) {
+		key, err := parseMetaDumpKey(`key=KEY01%2B40 exp=-1 la=1675839370 cas=34234 fetch=yes cls=5 size=76`)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, MetaDumpKey{
+			Key:   "KEY01+40",
+			Exp:   -1,
+			LA:    1675839370,
+			CAS:   34234,
+			Fetch: true,
+			Class: 5,
+			Size:  76,
+		}, key)
+	})
+
+	t.Run("invalid key escaped", func(t *testing.T) {
+		_, err := parseMetaDumpKey(`key=tung%mm exp=-1 la=1675839370 cas=34234 fetch=yes cls=5 size=76`)
+		assert.Error(t, err)
+	})
+
 	t.Run("invalid key value", func(t *testing.T) {
 		_, err := parseMetaDumpKey(`key`)
 		assert.Equal(t, NewError("missing key value"), err)
