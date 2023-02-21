@@ -225,6 +225,173 @@ func (c *Client) GetSlabsStats() (SlabsStats, error) {
 	return result, c.parser.getError()
 }
 
+// SlabItemsStats ...
+type SlabItemsStats struct {
+	SlabIDs []uint32
+	Slabs   map[uint32]SingleSlabItemStats
+}
+
+// SingleSlabItemStats ...
+type SingleSlabItemStats struct {
+	Number     uint64
+	NumberHot  uint64
+	NumberWarm uint64
+	NumberCold uint64
+	AgeHot     uint64
+	AgeWarm    uint64
+	Age        uint64
+
+	MemRequested uint64
+
+	Evicted        uint64
+	EvictedNonZero uint64
+	EvictedTime    uint64
+	OutOfMemory    uint64
+	TailRepairs    uint64
+	Reclaimed      uint64
+
+	ExpiredUnfetched uint64
+	EvictedUnfetched uint64
+	EvictedActive    uint64
+
+	CrawlerReclaimed    uint64
+	CrawlerItemsChecked uint64
+	LRUTailRefLocked    uint64
+
+	MovesToCold    uint64
+	MovesToWarm    uint64
+	MovesWithinLRU uint64
+
+	DirectReclaims uint64
+	HitsToHot      uint64
+	HitsToWarm     uint64
+	HitsToCold     uint64
+	HitsToTemp     uint64
+}
+
+//revive:disable-next-line:cognitive-complexity,cyclomatic
+func (s *SlabItemsStats) parseSlabItemStat(item statItem) error {
+	fields := strings.Split(item.key, ":")
+	if len(fields) < 3 {
+		return NewError("missing slab item stat fields")
+	}
+
+	slabClassValue, err := strconv.ParseUint(fields[1], 10, 32)
+	if err != nil {
+		return err
+	}
+	slabClass := uint32(slabClassValue)
+
+	setStat := func(fn func(s *SingleSlabItemStats)) {
+		stats, existed := s.Slabs[slabClass]
+		if !existed {
+			s.SlabIDs = append(s.SlabIDs, slabClass)
+		}
+		fn(&stats)
+		s.Slabs[slabClass] = stats
+	}
+
+	setNumber := func(fn func(s *SingleSlabItemStats, num uint64)) error {
+		number, err := strconv.ParseUint(item.value, 10, 64)
+		if err != nil {
+			return err
+		}
+		setStat(func(s *SingleSlabItemStats) {
+			fn(s, number)
+		})
+		return nil
+	}
+
+	switch fields[2] {
+	case "number":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.Number = num })
+	case "number_hot":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.NumberHot = num })
+	case "number_warm":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.NumberWarm = num })
+	case "number_cold":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.NumberCold = num })
+
+	case "age_hot":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.AgeHot = num })
+	case "age_warm":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.AgeWarm = num })
+	case "age":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.Age = num })
+
+	case "mem_requested":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.MemRequested = num })
+	case "evicted":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.Evicted = num })
+	case "evicted_nonzero":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.EvictedNonZero = num })
+	case "evicted_time":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.EvictedTime = num })
+	case "outofmemory":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.OutOfMemory = num })
+	case "tailrepairs":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.TailRepairs = num })
+
+	case "reclaimed":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.Reclaimed = num })
+	case "expired_unfetched":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.ExpiredUnfetched = num })
+	case "evicted_unfetched":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.EvictedUnfetched = num })
+	case "evicted_active":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.EvictedActive = num })
+
+	case "crawler_reclaimed":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.CrawlerReclaimed = num })
+	case "crawler_items_checked":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.CrawlerItemsChecked = num })
+	case "lrutail_reflocked":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.LRUTailRefLocked = num })
+
+	case "moves_to_cold":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.MovesToCold = num })
+	case "moves_to_warm":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.MovesToWarm = num })
+	case "moves_within_lru":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.MovesWithinLRU = num })
+
+	case "direct_reclaims":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.DirectReclaims = num })
+	case "hits_to_hot":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.HitsToHot = num })
+	case "hits_to_warm":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.HitsToWarm = num })
+	case "hits_to_cold":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.HitsToCold = num })
+	case "hits_to_temp":
+		return setNumber(func(s *SingleSlabItemStats, num uint64) { s.HitsToTemp = num })
+
+	default:
+		return nil
+	}
+}
+
+// GetSlabItemsStats ...
+func (c *Client) GetSlabItemsStats() (SlabItemsStats, error) {
+	if err := c.writeCommand("stats items\r\n"); err != nil {
+		return SlabItemsStats{}, err
+	}
+
+	result := SlabItemsStats{
+		Slabs: map[uint32]SingleSlabItemStats{},
+	}
+
+	for c.parser.next() {
+		item := c.parser.getItem()
+		err := result.parseSlabItemStat(item)
+		if err != nil {
+			return SlabItemsStats{}, err
+		}
+	}
+
+	return result, c.parser.getError()
+}
+
 // MetaDumpKey ...
 type MetaDumpKey struct {
 	Key   string

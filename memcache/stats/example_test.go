@@ -41,4 +41,8 @@ func TestExample_General__Then_Slab(t *testing.T) {
 	stats, err = c.GetSlabsStats()
 	assert.Equal(t, nil, err)
 	fmt.Printf("%+v\n", stats)
+
+	itemStats, err := c.GetSlabItemsStats()
+	assert.Equal(t, nil, err)
+	fmt.Printf("%+v\n", itemStats)
 }
