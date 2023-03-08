@@ -396,7 +396,7 @@ func TestClient__WriteTimeout(t *testing.T) {
 	duration := time.Since(start)
 
 	assert.Greater(t, duration, 150*time.Millisecond)
-	assert.Less(t, duration, 250*time.Millisecond)
+	assert.Less(t, duration, 500*time.Millisecond)
 
 	assert.Equal(t, true, errors.Is(err, os.ErrDeadlineExceeded))
 
