@@ -199,3 +199,17 @@ func WithDialFunc(dialFunc func(network, address string, timeout time.Duration) 
 		conf.dialFunc = dialFunc
 	}
 }
+
+// WithReadTimeout ...
+func WithReadTimeout(d time.Duration) Option {
+	return func(conf *config) {
+		conf.readTimeout = d
+	}
+}
+
+// WithWriteTimeout ...
+func WithWriteTimeout(d time.Duration) Option {
+	return func(conf *config) {
+		conf.writeTimeout = d
+	}
+}

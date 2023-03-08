@@ -3,10 +3,13 @@ package memcache
 import (
 	"errors"
 	"fmt"
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"net"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -280,4 +283,131 @@ func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
 		fmt.Println(resp)
 		time.Sleep(1 * time.Second)
 	}
+}
+
+//revive:disable-next-line:cognitive-complexity
+func TestClient__ReadTimeout(t *testing.T) {
+	lis, err := net.Listen("tcp", ":10099")
+	if err != nil {
+		panic(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		for {
+			conn, err := lis.Accept()
+			if err != nil {
+				return
+			}
+
+			go func() {
+				var data [1024]byte
+				for {
+					n, err := conn.Read(data[:])
+					if err == io.EOF {
+						fmt.Println("Connection EOF")
+						return
+					}
+					fmt.Println("Conn Data:", string(data[:n]))
+				}
+			}()
+		}
+	}()
+
+	c, err := New("localhost:10099", 1,
+		WithNetConnOptions(netconn.WithReadTimeout(200*time.Millisecond)),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	pipe := c.Pipeline()
+	defer pipe.Finish()
+
+	start := time.Now()
+	resp, err := pipe.MGet("KEY01", MGetOptions{})()
+	getDuration := time.Since(start)
+
+	assert.Greater(t, getDuration, 150*time.Millisecond)
+	assert.Less(t, getDuration, 250*time.Millisecond)
+
+	assert.Equal(t, true, errors.Is(err, os.ErrDeadlineExceeded))
+	assert.Equal(t, MGetResponse{}, resp)
+
+	fmt.Println(resp, err, getDuration)
+
+	_ = lis.Close()
+	wg.Wait()
+}
+
+func TestClient__WriteTimeout(t *testing.T) {
+	lis, err := net.Listen("tcp", ":10099")
+	if err != nil {
+		panic(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var connMut sync.Mutex
+	var connList []net.Conn
+
+	go func() {
+		defer wg.Done()
+
+		for {
+			conn, err := lis.Accept()
+			if err != nil {
+				return
+			}
+
+			connMut.Lock()
+			connList = append(connList, conn)
+			connMut.Unlock()
+		}
+	}()
+
+	c, err := New("localhost:10099", 1,
+		WithNetConnOptions(netconn.WithWriteTimeout(200*time.Millisecond)),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	pipe := c.Pipeline()
+	defer pipe.Finish()
+
+	start := time.Now()
+
+	fnList := make([]func() (MSetResponse, error), 0)
+	for i := 0; i < 10; i++ {
+		fn := pipe.MSet("KEY01", []byte(strings.Repeat("A", 1<<19)), MSetOptions{})
+		fnList = append(fnList, fn)
+	}
+
+	for _, fn := range fnList {
+		_, err = fn()
+	}
+
+	duration := time.Since(start)
+
+	assert.Greater(t, duration, 150*time.Millisecond)
+	assert.Less(t, duration, 250*time.Millisecond)
+
+	assert.Equal(t, true, errors.Is(err, os.ErrDeadlineExceeded))
+
+	fmt.Println(err, duration)
+
+	_ = lis.Close()
+	wg.Wait()
+
+	connMut.Lock()
+	for _, conn := range connList {
+		_ = conn.Close()
+	}
+	connMut.Unlock()
 }

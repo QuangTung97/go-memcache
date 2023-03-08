@@ -16,8 +16,8 @@ type memcacheOptions struct {
 	connOptions []netconn.Option
 }
 
-func (o *memcacheOptions) addConnOption(opt netconn.Option) {
-	o.connOptions = append(o.connOptions, opt)
+func (o *memcacheOptions) addConnOption(options ...netconn.Option) {
+	o.connOptions = append(o.connOptions, options...)
 }
 
 // Option ...
@@ -71,5 +71,12 @@ func WithTCPKeepAliveDuration(d time.Duration) Option {
 func WithDialFunc(dialFunc func(network, address string, timeout time.Duration) (net.Conn, error)) Option {
 	return func(opts *memcacheOptions) {
 		opts.addConnOption(netconn.WithDialFunc(dialFunc))
+	}
+}
+
+// WithNetConnOptions ...
+func WithNetConnOptions(options ...netconn.Option) Option {
+	return func(opts *memcacheOptions) {
+		opts.addConnOption(options...)
 	}
 }

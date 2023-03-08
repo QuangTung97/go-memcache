@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
 	"unicode"
 )
 
@@ -102,6 +103,10 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 
 func (s *pipelineSession) doRetryForError(currentCmd *commandData, err error) {
 	if err == nil {
+		return
+	}
+
+	if errors.Is(err, os.ErrDeadlineExceeded) {
 		return
 	}
 
