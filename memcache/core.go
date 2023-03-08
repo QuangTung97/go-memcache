@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"sync"
 	"sync/atomic"
 )
@@ -17,7 +18,7 @@ type coreConnection struct {
 	cmdList *cmdListReader
 }
 
-func newCoreConnection(nc netConn, options *memcacheOptions) *coreConnection {
+func newCoreConnection(nc netconn.NetConn, options *memcacheOptions) *coreConnection {
 	cmdSender := newSender(nc, 10)
 
 	c := &coreConnection{
@@ -52,7 +53,7 @@ func (c *coreConnection) publish(cmd *commandData) {
 	c.sender.publish(cmd)
 }
 
-func (c *coreConnection) resetNetConn(nc netConn) {
+func (c *coreConnection) resetNetConn(nc netconn.NetConn) {
 	c.sender.resetNetConn(nc)
 }
 

@@ -1,8 +1,7 @@
 package memcache
 
 import (
-	"bufio"
-	"net"
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"sync"
 	"time"
 )
@@ -12,37 +11,13 @@ type clientConn struct {
 	core *coreConnection
 }
 
-func netDialNewConn(addr string, options *memcacheOptions) (netConn, error) {
-	nc, err := options.dialFunc("tcp", addr)
-	if err != nil {
-		return netConn{}, err
-	}
-
-	tcpNetConn, ok := nc.(*net.TCPConn)
-	if ok {
-		if err := tcpNetConn.SetKeepAlive(true); err != nil {
-			return netConn{}, err
-		}
-		if err := tcpNetConn.SetKeepAlivePeriod(options.tcpKeepAliveDuration); err != nil {
-			return netConn{}, err
-		}
-	}
-
-	writer := bufio.NewWriterSize(nc, options.bufferSize)
-	return netConn{
-		reader: nc,
-		writer: writer,
-		closer: nc,
-	}, nil
-}
-
 func newConn(addr string, options ...Option) *clientConn {
 	opts := computeOptions(options...)
 
-	nc, err := netDialNewConn(addr, opts)
+	nc, err := netconn.DialNewConn(addr, opts.connOptions...)
 	if err != nil {
 		opts.dialErrorLogger(err)
-		nc = errorNetConn(err)
+		nc = netconn.ErrorNetConn(err)
 	}
 
 	c := &clientConn{
@@ -60,7 +35,7 @@ func newConn(addr string, options ...Option) *clientConn {
 				return
 			}
 
-			nc, err = netDialNewConn(addr, opts)
+			nc, err = netconn.DialNewConn(addr, opts.connOptions...)
 			if err != nil {
 				opts.dialErrorLogger(err)
 

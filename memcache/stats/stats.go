@@ -2,10 +2,8 @@ package stats
 
 import (
 	"bufio"
-	"github.com/QuangTung97/go-memcache/memcache"
-	"io"
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"log"
-	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -15,16 +13,15 @@ import (
 // checkout https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 // for more information
 type Client struct {
-	nc      netConn
+	nc      netconn.NetConn
 	scanner *bufio.Scanner
 	parser  *statsParser
 }
 
-// for testing
-var globalNetDial = net.Dial
-
 type dialConfig struct {
 	errorLogger func(err error)
+
+	connOptions []netconn.Option
 }
 
 // Option ...
@@ -34,6 +31,13 @@ type Option func(conf *dialConfig)
 func WithErrorLogger(logger func(err error)) Option {
 	return func(conf *dialConfig) {
 		conf.errorLogger = logger
+	}
+}
+
+// WithNetConnOptions ...
+func WithNetConnOptions(options ...netconn.Option) Option {
+	return func(conf *dialConfig) {
+		conf.connOptions = options
 	}
 }
 
@@ -49,9 +53,13 @@ func New(addr string, options ...Option) *Client {
 		opt(conf)
 	}
 
-	nc := netDialNewConn(addr, conf)
+	nc, err := netconn.DialNewConn(addr, conf.connOptions...)
+	if err != nil {
+		conf.errorLogger(err)
+		nc = netconn.ErrorNetConn(err)
+	}
 
-	scanner := bufio.NewScanner(nc.reader)
+	scanner := bufio.NewScanner(nc.Reader)
 
 	return &Client{
 		nc:      nc,
@@ -67,12 +75,12 @@ type GeneralStats struct {
 }
 
 func (c *Client) writeCommand(cmd string) error {
-	_, err := c.nc.writer.Write([]byte(cmd))
+	_, err := c.nc.Writer.Write([]byte(cmd))
 	if err != nil {
 		return err
 	}
 
-	return c.nc.writer.Flush()
+	return c.nc.Writer.Flush()
 }
 
 // GetGeneralStats ...
@@ -497,48 +505,7 @@ type statItem struct {
 	value string
 }
 
-type netConn struct {
-	writer memcache.FlushWriter
-	reader io.ReadCloser
-}
-
-type errorConn struct {
-	err error
-}
-
-func (w *errorConn) Write([]byte) (n int, err error) {
-	return 0, w.err
-}
-
-func (w *errorConn) Read([]byte) (n int, err error) {
-	return 0, w.err
-}
-
-func errorNetConn(err error) netConn {
-	conn := &errorConn{
-		err: err,
-	}
-	return netConn{
-		writer: memcache.NoopFlusher(conn),
-		reader: io.NopCloser(conn),
-	}
-}
-
-func netDialNewConn(addr string, conf *dialConfig) netConn {
-	nc, err := globalNetDial("tcp", addr)
-	if err != nil {
-		conf.errorLogger(err)
-		return errorNetConn(err)
-	}
-
-	writer := bufio.NewWriterSize(nc, 4*1024)
-	return netConn{
-		reader: nc,
-		writer: writer,
-	}
-}
-
 // Close ...
 func (c *Client) Close() error {
-	return c.nc.reader.Close()
+	return c.nc.Reader.Close()
 }

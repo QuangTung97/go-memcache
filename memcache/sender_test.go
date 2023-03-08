@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"strings"
@@ -21,11 +22,11 @@ func newCommandFromString(s string) *commandData {
 	return cmd
 }
 
-func newNetConnForTest(buf *bytes.Buffer) netConn {
-	return netConn{
-		writer: NoopFlusher(buf),
-		reader: nil,
-		closer: nil,
+func newNetConnForTest(buf *bytes.Buffer) netconn.NetConn {
+	return netconn.NetConn{
+		Writer: netconn.NoopFlusher(buf),
+		Reader: nil,
+		Closer: nil,
 	}
 }
 
@@ -198,7 +199,7 @@ func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
 func TestSender_Publish_Write_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
-	s := newSender(netConn{writer: writer, closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
 		return 0, errors.New("some error")
@@ -228,7 +229,7 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 func TestSender_Publish_Flush_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
-	s := newSender(netConn{writer: writer, closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil
@@ -265,7 +266,7 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	reader2 := &readCloserInterfaceMock{}
 
 	closer := &closerInterfaceMock{}
-	s := newSender(netConn{writer: writer1, closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer1, Closer: closer}, 8)
 
 	var writeBytes []byte
 	writer1.WriteFunc = func(p []byte) (int, error) {
@@ -279,7 +280,7 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	cmd1.waitCompleted()
 
 	s.waitForError()
-	s.resetNetConn(netConn{writer: writer2, reader: reader2, closer: closer})
+	s.resetNetConn(netconn.NetConn{Writer: writer2, Reader: reader2, Closer: closer})
 
 	writer2.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil

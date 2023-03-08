@@ -20,7 +20,7 @@ func TestClient_New_With_NumConns_Zero(t *testing.T) {
 }
 
 func TestClient_New_Connect_Error(t *testing.T) {
-	dialFunc := func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		return nil, errors.New("cannot connect to memcached")
 	}
 
@@ -54,7 +54,7 @@ func TestClient_New_Connect_Error(t *testing.T) {
 func TestClient_Connection_Error_And_Retry(t *testing.T) {
 	counter := uint64(0)
 	var connection net.Conn
-	dialFunc := func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		atomic.AddUint64(&counter, 1)
 
 		if counter > 1 && counter < 5 { // skip 2, and then 3, 4 => 30 millisecond total
@@ -127,7 +127,7 @@ func (c *connRecorder) Write(b []byte) (n int, err error) {
 
 func TestClient_PushData_To_Connection_Correctly(t *testing.T) {
 	var recorder *connRecorder
-	dialFunc := func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		conn, err := net.Dial(network, address)
 		if err != nil {
 			panic(err)
@@ -168,7 +168,7 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 	var recorder2 *connRecorder
 
 	counter := 0
-	dialFunc := func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		counter++
 
 		conn, err := net.Dial(network, address)
@@ -222,7 +222,7 @@ func TestClient_Retry_On_TCP_Conn_Close__Error_EOF(t *testing.T) {
 
 func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
 	var recorder *connRecorder
-	dialFunc := func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		conn, err := net.Dial(network, address)
 		if err != nil {
 			panic(err)
@@ -257,10 +257,9 @@ func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
 }
 
 func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
-	// TODO Add Test Cases
 	t.Skip()
 
-	dialFunc := func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		return net.Dial(network, address)
 	}
 	c, err := New("localhost:11211", 1, WithDialFunc(dialFunc))

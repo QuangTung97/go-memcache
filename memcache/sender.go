@@ -3,31 +3,17 @@ package memcache
 import (
 	"io"
 	"sync"
-)
 
-// FlushWriter ...
-type FlushWriter interface {
-	io.Writer
-	Flush() error
-}
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
+)
 
 type closerInterface = io.Closer
 type readCloserInterface = io.ReadCloser
 
+// FlushWriter ...
+type FlushWriter = netconn.FlushWriter
+
 //go:generate moq -out sender_mocks_test.go . FlushWriter closerInterface readCloserInterface
-
-type noopFlusher struct {
-	io.Writer
-}
-
-func (f noopFlusher) Flush() error {
-	return nil
-}
-
-// NoopFlusher ...
-func NoopFlusher(w io.Writer) FlushWriter {
-	return noopFlusher{Writer: w}
-}
 
 // =====================
 // Pool of Bytes
@@ -125,7 +111,7 @@ func (c *commandData) setCompleted(err error) {
 
 type sender struct {
 	//---- protected by ncMut ------
-	nc     netConn
+	nc     netconn.NetConn
 	ncMut  sync.Mutex
 	tmpBuf []*commandData
 
@@ -273,36 +259,7 @@ func (b *recvBuffer) closeBuffer() {
 	b.recvCond.Signal()
 }
 
-type netConn struct {
-	writer FlushWriter
-	closer io.Closer
-	reader io.ReadCloser
-}
-
-type errorConn struct {
-	err error
-}
-
-func (w *errorConn) Write([]byte) (n int, err error) {
-	return 0, w.err
-}
-
-func (w *errorConn) Read([]byte) (n int, err error) {
-	return 0, w.err
-}
-
-func errorNetConn(err error) netConn {
-	conn := &errorConn{
-		err: err,
-	}
-	return netConn{
-		writer: NoopFlusher(conn),
-		closer: io.NopCloser(nil),
-		reader: io.NopCloser(conn),
-	}
-}
-
-func newSender(nc netConn, bufSizeLog int) *sender {
+func newSender(nc netconn.NetConn, bufSizeLog int) *sender {
 	s := &sender{
 		nc:      nc,
 		lastErr: nil,
@@ -333,7 +290,7 @@ func (s *sender) replyErrorToCmdInTmpBuf(err error) {
 func (s *sender) setLastErrorAndClose(err error) {
 	s.lastErr = err
 	s.ncErrorCond.Signal()
-	_ = s.nc.closer.Close()
+	_ = s.nc.Closer.Close()
 }
 
 func (s *sender) writeAndFlush() error {
@@ -342,14 +299,14 @@ func (s *sender) writeAndFlush() error {
 	}
 
 	for _, cmd := range s.tmpBuf {
-		_, err := s.nc.writer.Write(cmd.requestData)
+		_, err := s.nc.Writer.Write(cmd.requestData)
 		if err != nil {
 			s.setLastErrorAndClose(err)
 			return err
 		}
 	}
 
-	err := s.nc.writer.Flush()
+	err := s.nc.Writer.Flush()
 	if err != nil {
 		s.setLastErrorAndClose(err)
 		return err
@@ -364,7 +321,7 @@ func (s *sender) sendToWriter() {
 	s.tmpBuf = s.send.popAll(s.tmpBuf)
 
 	for _, cmd := range s.tmpBuf {
-		cmd.reader = s.nc.reader
+		cmd.reader = s.nc.Reader
 		cmd.epoch = s.cmdEpoch
 	}
 
@@ -408,7 +365,7 @@ func (s *sender) waitForError() {
 func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
 	s.ncMut.Lock()
 	if s.lastErr != ErrConnClosed {
-		if s.nc.reader == prevReader {
+		if s.nc.Reader == prevReader {
 			s.lastErr = err
 		}
 	}
@@ -438,7 +395,7 @@ func (s *sender) increaseEpochAndSetError(err error) {
 	s.epochWaitCond.Broadcast()
 }
 
-func (s *sender) resetNetConn(nc netConn) {
+func (s *sender) resetNetConn(nc netconn.NetConn) {
 	s.ncMut.Lock()
 	s.epoch++
 	s.cmdEpoch = s.epoch
@@ -453,7 +410,7 @@ func (s *sender) closeNetConn() error {
 	s.ncMut.Lock()
 
 	s.recv.closeBuffer()
-	err := s.nc.closer.Close()
+	err := s.nc.Closer.Close()
 	s.lastErr = ErrConnClosed
 
 	s.ncMut.Unlock()

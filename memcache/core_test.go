@@ -2,6 +2,7 @@ package memcache
 
 import (
 	"errors"
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"testing"
@@ -9,9 +10,9 @@ import (
 )
 
 func newCoreConnTest(writer FlushWriter, reader io.ReadCloser) *coreConnection {
-	return newCoreConnection(netConn{
-		writer: writer,
-		reader: reader,
+	return newCoreConnection(netconn.NetConn{
+		Writer: writer,
+		Reader: reader,
 	}, computeOptions())
 }
 
@@ -56,9 +57,9 @@ func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
 	c.waitForError()
 	writer2 := &FlushWriterMock{}
 	reader2 := &readCloserInterfaceMock{}
-	c.resetNetConn(netConn{
-		writer: writer2,
-		reader: reader2,
+	c.resetNetConn(netconn.NetConn{
+		Writer: writer2,
+		Reader: reader2,
 	})
 
 	writer2.WriteFunc = func(p []byte) (int, error) {

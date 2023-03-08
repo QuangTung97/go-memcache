@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"log"
 	"net"
 	"time"
@@ -10,9 +11,13 @@ type memcacheOptions struct {
 	retryDuration time.Duration
 	bufferSize    int
 
-	tcpKeepAliveDuration time.Duration
-	dialErrorLogger      func(err error)
-	dialFunc             func(network, address string) (net.Conn, error)
+	dialErrorLogger func(err error)
+
+	connOptions []netconn.Option
+}
+
+func (o *memcacheOptions) addConnOption(opt netconn.Option) {
+	o.connOptions = append(o.connOptions, opt)
 }
 
 // Option ...
@@ -23,11 +28,9 @@ func computeOptions(options ...Option) *memcacheOptions {
 		retryDuration: 10 * time.Second,
 		bufferSize:    16 * 1024,
 
-		tcpKeepAliveDuration: 5 * time.Minute,
 		dialErrorLogger: func(err error) {
 			log.Println("[ERROR] Memcache dial error:", err)
 		},
-		dialFunc: net.Dial,
 	}
 	for _, o := range options {
 		o(opts)
@@ -46,6 +49,7 @@ func WithRetryDuration(d time.Duration) Option {
 func WithBufferSize(size int) Option {
 	return func(opts *memcacheOptions) {
 		opts.bufferSize = size
+		opts.addConnOption(netconn.WithBufferSize(size))
 	}
 }
 
@@ -59,13 +63,13 @@ func WithDialErrorLogger(fn func(err error)) Option {
 // WithTCPKeepAliveDuration sets the tcp keep alive duration
 func WithTCPKeepAliveDuration(d time.Duration) Option {
 	return func(opts *memcacheOptions) {
-		opts.tcpKeepAliveDuration = d
+		opts.addConnOption(netconn.WithTCPKeepAliveDuration(d))
 	}
 }
 
 // WithDialFunc ...
-func WithDialFunc(dialFunc func(network, address string) (net.Conn, error)) Option {
+func WithDialFunc(dialFunc func(network, address string, timeout time.Duration) (net.Conn, error)) Option {
 	return func(opts *memcacheOptions) {
-		opts.dialFunc = dialFunc
+		opts.addConnOption(netconn.WithDialFunc(dialFunc))
 	}
 }

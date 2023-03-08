@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 type clientTest struct {
@@ -48,12 +50,11 @@ func newClientTest(t *testing.T, reader io.Reader) *clientTest {
 		nc: nc,
 	}
 
-	globalNetDial = func(network, address string) (net.Conn, error) {
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
 		return nc, nil
 	}
-	defer func() { globalNetDial = net.Dial }()
 
-	client := New("localhost:11211")
+	client := New("localhost:11211", WithNetConnOptions(netconn.WithDialFunc(dialFunc)))
 	t.Cleanup(func() { _ = client.Close() })
 
 	c.client = client
