@@ -24,6 +24,19 @@ type connTest struct {
 
 	writeBytes []byte
 	writeErr   error
+
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+}
+
+func (c *connTest) SetReadDeadline(t time.Time) error {
+	c.readTimeout = t.Sub(time.Now())
+	return nil
+}
+
+func (c *connTest) SetWriteDeadline(t time.Time) error {
+	c.writeTimeout = t.Sub(time.Now())
+	return nil
 }
 
 func (c *connTest) Read(b []byte) (n int, err error) {
@@ -116,6 +129,12 @@ func TestStatsClient(t *testing.T) {
 		assert.Equal(t, "stats: missing stat fields", err.Error())
 
 		assert.Equal(t, []byte("stats\r\n"), c.nc.writeBytes)
+
+		fmt.Println(c.nc.writeTimeout)
+		assert.Greater(t, c.nc.writeTimeout, 900*time.Millisecond)
+
+		fmt.Println(c.nc.readTimeout)
+		assert.Greater(t, c.nc.readTimeout, 900*time.Millisecond)
 	})
 
 	t.Run("general-pid-not-number", func(t *testing.T) {

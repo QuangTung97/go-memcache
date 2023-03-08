@@ -20,6 +20,48 @@ type NetConn struct {
 	Reader io.ReadCloser
 }
 
+type connTimeout interface {
+	// SetReadDeadline sets the deadline for future Read calls
+	// and any currently-blocked Read call.
+	// A zero value for t means Read will not time out.
+	SetReadDeadline(t time.Time) error
+
+	// SetWriteDeadline sets the deadline for future Write calls
+	// and any currently-blocked Write call.
+	// Even if write times out, it may return n > 0, indicating that
+	// some data was successfully written.
+	// A zero value for t means Write will not time out.
+	SetWriteDeadline(t time.Time) error
+}
+
+type timeoutWriter struct {
+	FlushWriter
+	timeout      connTimeout
+	writeTimeout time.Duration
+}
+
+func (w *timeoutWriter) Write(p []byte) (n int, err error) {
+	err = w.timeout.SetWriteDeadline(time.Now().Add(w.writeTimeout))
+	if err != nil {
+		return 0, err
+	}
+	return w.FlushWriter.Write(p)
+}
+
+type timeoutReader struct {
+	io.ReadCloser
+	timeout     connTimeout
+	readTimeout time.Duration
+}
+
+func (r *timeoutReader) Read(p []byte) (n int, err error) {
+	err = r.timeout.SetReadDeadline(time.Now().Add(r.readTimeout))
+	if err != nil {
+		return 0, err
+	}
+	return r.ReadCloser.Read(p)
+}
+
 type config struct {
 	dialFunc func(network, address string, timeout time.Duration) (net.Conn, error)
 
@@ -71,11 +113,24 @@ func DialNewConn(addr string, options ...Option) (NetConn, error) {
 		}
 	}
 
-	writer := bufio.NewWriterSize(nc, conf.bufferSize)
+	var writer FlushWriter = bufio.NewWriterSize(nc, conf.bufferSize)
+
+	writer = &timeoutWriter{
+		FlushWriter:  writer,
+		timeout:      nc,
+		writeTimeout: conf.writeTimeout,
+	}
+
+	var reader io.ReadCloser = &timeoutReader{
+		ReadCloser:  nc,
+		timeout:     nc,
+		readTimeout: conf.readTimeout,
+	}
+
 	return NetConn{
 		Writer: writer,
-		Closer: nc,
-		Reader: nc,
+		Closer: reader,
+		Reader: reader,
 	}, nil
 }
 
