@@ -57,6 +57,10 @@ func (c *coreConnection) resetNetConn(nc netconn.NetConn) {
 	c.sender.resetNetConn(nc)
 }
 
+func (c *coreConnection) forceSetConnError(err error) {
+	c.sender.forceSetNetConnError(err)
+}
+
 func (c *coreConnection) waitForError() {
 	c.sender.waitForError()
 }

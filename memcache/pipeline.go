@@ -96,6 +96,9 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 		default:
 			panic("invalid cmd type")
 		}
+		if cmd.err != nil {
+			s.pipeline.c.core.forceSetConnError(cmd.err)
+		}
 	}
 
 	return nil
@@ -300,11 +303,20 @@ func (p *Pipeline) FlushAll() func() error {
 // ErrInvalidKeyFormat ...
 var ErrInvalidKeyFormat = errors.New("memcached: invalid key format")
 
+// ErrKeyTooLong ...
+var ErrKeyTooLong = errors.New("memcached: key too long")
+
+// for testing
+var enabledCheckLen = true
+
 func validateKeyFormat(key string) error {
 	for _, r := range key {
 		if unicode.IsControl(r) {
 			return ErrInvalidKeyFormat
 		}
+	}
+	if enabledCheckLen && len(key) > 250 {
+		return ErrKeyTooLong
 	}
 	return nil
 }

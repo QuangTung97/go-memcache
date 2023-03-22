@@ -3,6 +3,7 @@ package memcache
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -133,6 +134,85 @@ func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
 		Type:  MGetResponseTypeVA,
 		Data:  []byte{},
 		Flags: MGetFlagW,
+	}, resp)
+}
+
+func TestPipeline_MSet_Then_Mget_Special_Characters(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	data := "😀 😃 😄 😁"
+
+	_, err = p.MSet("key01", []byte(data), MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte(data),
+	}, resp)
+}
+
+func TestPipeline_MSet_Error_Key_Too_Long(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	data := "some-data"
+
+	key := strings.Repeat("a", 251)
+
+	_, err = p.MSet(key, []byte(data), MSetOptions{})()
+	assert.Equal(t, ErrKeyTooLong, err)
+}
+
+func TestPipeline_MSet_Error_Key_Too_Long__Disable_Check(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	enabledCheckLen = false
+	defer func() {
+		enabledCheckLen = true
+	}()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	data := "some-data"
+
+	key := strings.Repeat("a", 251)
+
+	_, err = p.MSet(key, []byte(data), MSetOptions{})()
+	assert.Equal(t, ErrClientError{
+		Message: "bad command line format",
+	}, err)
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, ErrClientError{Message: "bad command line format"}, err)
+	assert.Equal(t, MGetResponse{}, resp)
+
+	time.Sleep(30 * time.Millisecond)
+
+	// Should Retry on a new Connection
+	resp, err = p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeEN,
 	}, resp)
 }
 

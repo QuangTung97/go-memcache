@@ -374,6 +374,16 @@ func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
 	s.ncErrorCond.Signal()
 }
 
+func (s *sender) forceSetNetConnError(err error) {
+	s.ncMut.Lock()
+	if s.lastErr != ErrConnClosed {
+		s.lastErr = err
+	}
+	s.ncMut.Unlock()
+
+	s.ncErrorCond.Signal()
+}
+
 // waitForNewEpoch used inside *pipeline.go*
 func (s *sender) waitForNewEpoch(waitEpoch uint64) error {
 	s.ncMut.Lock()
@@ -388,8 +398,10 @@ func (s *sender) waitForNewEpoch(waitEpoch uint64) error {
 // increaseEpochAndSetError used inside *conn.go*
 func (s *sender) increaseEpochAndSetError(err error) {
 	s.ncMut.Lock()
-	s.epoch++
-	s.lastErr = err
+	if s.lastErr != ErrConnClosed {
+		s.epoch++
+		s.lastErr = err
+	}
 	s.ncMut.Unlock()
 
 	s.epochWaitCond.Broadcast()
@@ -397,10 +409,12 @@ func (s *sender) increaseEpochAndSetError(err error) {
 
 func (s *sender) resetNetConn(nc netconn.NetConn) {
 	s.ncMut.Lock()
-	s.epoch++
-	s.cmdEpoch = s.epoch
-	s.nc = nc
-	s.lastErr = nil
+	if s.lastErr != ErrConnClosed {
+		s.epoch++
+		s.cmdEpoch = s.epoch
+		s.nc = nc
+		s.lastErr = nil
+	}
 	s.ncMut.Unlock()
 
 	s.epochWaitCond.Broadcast()
