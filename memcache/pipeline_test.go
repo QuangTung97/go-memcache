@@ -581,7 +581,9 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	assert.Equal(t, NewServerError("object too large for cache"), err)
 	assert.Equal(t, MSetResponse{}, setResp)
 
-	setResp, err = p.MSet(key, repeatBytes('A', maxDataSize), MSetOptions{})()
+	const diff = 128
+
+	setResp, err = p.MSet(key, repeatBytes('A', maxDataSize-diff), MSetOptions{})()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
 
@@ -589,7 +591,7 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, MGetResponse{
 		Type: MGetResponseTypeVA,
-		Data: repeatBytes('A', maxDataSize),
+		Data: repeatBytes('A', maxDataSize-diff),
 	}, getResp)
 }
 
