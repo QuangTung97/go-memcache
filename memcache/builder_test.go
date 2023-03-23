@@ -53,6 +53,14 @@ func TestBuilder_AddMSet(t *testing.T) {
 	assert.Equal(t, "ms some:key 10\r\nSOME-VALUE\r\n", string(b.getCmd().requestData))
 }
 
+func TestBuilder_AddMSet_Length_Zero(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMSet("some:key", nil, MSetOptions{})
+
+	assert.Equal(t, 1, b.getCmd().cmdCount)
+	assert.Equal(t, "ms some:key 0\r\n\r\n", string(b.getCmd().requestData))
+}
+
 func TestBuilder_AddMSet_WithCAS(t *testing.T) {
 	b := newCmdBuilder()
 	b.addMSet("some:key", []byte("SOME-VALUE"), MSetOptions{

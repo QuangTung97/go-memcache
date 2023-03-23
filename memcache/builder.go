@@ -28,8 +28,14 @@ func initCmdBuilder(b *cmdBuilder) {
 }
 
 func appendNumber(data []byte, n uint64) []byte {
+	if n == 0 {
+		data = append(data, '0')
+		return data
+	}
+
 	index := len(data)
 	k := 0
+
 	for n > 0 {
 		d := n % 10
 		data = append(data, byte(d)+'0')

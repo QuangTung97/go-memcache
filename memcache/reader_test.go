@@ -183,3 +183,18 @@ func TestResponseReader_Reset_With_Error(t *testing.T) {
 	data := r.readDataForTest()
 	assert.Equal(t, []byte("EN\r\n"), data)
 }
+
+func TestResponseReader_Client_Error(t *testing.T) {
+	r := newResponseReader(10)
+
+	r.recv([]byte("CLIENT_ERROR bad command line format\r\n"))
+
+	ok := r.hasNext()
+	assert.Equal(t, true, ok)
+
+	data := r.readDataForTest()
+	assert.Equal(t, []byte("CLIENT_ERROR bad command line format\r\n"), data)
+
+	ok = r.hasNext()
+	assert.Equal(t, false, ok)
+}

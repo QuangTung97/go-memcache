@@ -108,6 +108,57 @@ func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
 	}, resp2)
 }
 
+func TestPipeline_MSet_MGet_With_Values_All_Bytes(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	data := make([]byte, 255)
+	for i := range data {
+		data[i] = byte(i)
+	}
+
+	setResp, err := p.MSet("key01", data, MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: data,
+	}, resp)
+}
+
+func TestPipeline_MSet_MSet_With_Empty_Bytes(t *testing.T) {
+	c, err := New("localhost:11211", 1)
+	assert.Equal(t, nil, err)
+	defer func() { _ = c.Close() }()
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	pipelineFlushAll(p)
+
+	data := make([]byte, 0)
+
+	setResp, err := p.MSet("key01", data, MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
+
+	resp, err := p.MGet("key01", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: data,
+	}, resp)
+}
+
 func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
 	c, err := New("localhost:11211", 1)
 	assert.Equal(t, nil, err)
