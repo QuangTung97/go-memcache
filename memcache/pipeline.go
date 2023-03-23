@@ -303,6 +303,9 @@ func (p *Pipeline) FlushAll() func() error {
 // ErrInvalidKeyFormat ...
 var ErrInvalidKeyFormat = errors.New("memcached: invalid key format")
 
+// ErrKeyEmpty ...
+var ErrKeyEmpty = errors.New("memcached: key is empty")
+
 // ErrKeyTooLong ...
 var ErrKeyTooLong = errors.New("memcached: key too long")
 
@@ -310,6 +313,9 @@ var ErrKeyTooLong = errors.New("memcached: key too long")
 var enabledCheckLen = true
 
 func validateKeyFormat(key string) error {
+	if len(key) == 0 {
+		return ErrKeyEmpty
+	}
 	for _, r := range key {
 		if unicode.IsControl(r) {
 			return ErrInvalidKeyFormat

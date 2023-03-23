@@ -21,13 +21,21 @@ func assertMGetEqual(t *testing.T, a, b MGetResponse) {
 	assert.Equal(t, a, b)
 }
 
-func TestPipeline_Simple_MGet(t *testing.T) {
-	c, err := New("localhost:11211", 1)
+func newPipelineTest(t *testing.T, options ...Option) *Pipeline {
+	c, err := New("localhost:11211", 1, options...)
 	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
+	t.Cleanup(func() { _ = c.Close() })
 
 	p := c.Pipeline()
-	defer p.Finish()
+	t.Cleanup(p.Finish)
+
+	pipelineFlushAll(p)
+
+	return p
+}
+
+func TestPipeline_Simple_MGet(t *testing.T) {
+	p := newPipelineTest(t)
 
 	pipelineFlushAll(p)
 
@@ -41,14 +49,7 @@ func TestPipeline_Simple_MGet(t *testing.T) {
 }
 
 func TestPipeline_Multi_MGet(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	mg1 := p.MGet("key01", MGetOptions{N: 10, CAS: true})
 	mg2 := p.MGet("key02", MGetOptions{N: 10, CAS: true})
@@ -79,14 +80,7 @@ func TestPipeline_Multi_MGet(t *testing.T) {
 }
 
 func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	resp, err := p.MGet("key01", MGetOptions{N: 10, CAS: true})()
 	assert.Equal(t, nil, err)
@@ -109,14 +103,7 @@ func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
 }
 
 func TestPipeline_MSet_MGet_With_Values_All_Bytes(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	data := make([]byte, 255)
 	for i := range data {
@@ -136,14 +123,7 @@ func TestPipeline_MSet_MGet_With_Values_All_Bytes(t *testing.T) {
 }
 
 func TestPipeline_MSet_MSet_With_Empty_Bytes(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	data := make([]byte, 0)
 
@@ -159,15 +139,18 @@ func TestPipeline_MSet_MSet_With_Empty_Bytes(t *testing.T) {
 	}, resp)
 }
 
+func TestPipeline_MSet_MSet_With_Key_Empty(t *testing.T) {
+	p := newPipelineTest(t)
+
+	data := make([]byte, 0)
+
+	setResp, err := p.MSet("", data, MSetOptions{})()
+	assert.Equal(t, ErrKeyEmpty, err)
+	assert.Equal(t, MSetResponse{}, setResp)
+}
+
 func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	resp, _ := p.MGet("key01", MGetOptions{N: 10, CAS: true})()
 	_, _ = p.MSet("key01", []byte("simple\r\nvalue"), MSetOptions{CAS: resp.CAS})()
@@ -189,18 +172,11 @@ func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
 }
 
 func TestPipeline_MSet_Then_Mget_Special_Characters(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	data := "😀 😃 😄 😁"
 
-	_, err = p.MSet("key01", []byte(data), MSetOptions{})()
+	_, err := p.MSet("key01", []byte(data), MSetOptions{})()
 	assert.Equal(t, nil, err)
 
 	resp, err := p.MGet("key01", MGetOptions{})()
@@ -212,43 +188,27 @@ func TestPipeline_MSet_Then_Mget_Special_Characters(t *testing.T) {
 }
 
 func TestPipeline_MSet_Error_Key_Too_Long(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	data := "some-data"
 
 	key := strings.Repeat("a", 251)
 
-	_, err = p.MSet(key, []byte(data), MSetOptions{})()
+	_, err := p.MSet(key, []byte(data), MSetOptions{})()
 	assert.Equal(t, ErrKeyTooLong, err)
 }
 
 func TestPipeline_MSet_Error_Key_Too_Long__Disable_Check(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
+	p := newPipelineTest(t)
 
 	enabledCheckLen = false
-	defer func() {
-		enabledCheckLen = true
-	}()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	defer func() { enabledCheckLen = true }()
 
 	data := "some-data"
 
 	key := strings.Repeat("a", 251)
 
-	_, err = p.MSet(key, []byte(data), MSetOptions{})()
+	_, err := p.MSet(key, []byte(data), MSetOptions{})()
 	assert.Equal(t, ErrClientError{
 		Message: "bad command line format",
 	}, err)
@@ -268,20 +228,13 @@ func TestPipeline_MSet_Error_Key_Too_Long__Disable_Check(t *testing.T) {
 }
 
 func TestPipeline_MSet_Then_MDel_With_Invalidate_Then_MGet_Stale_Data(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	resp, _ := p.MGet("key01", MGetOptions{N: 10, CAS: true})()
 	_, _ = p.MSet("key01", []byte("simple\r\nvalue"), MSetOptions{CAS: resp.CAS})()
 	_, _ = p.MDel("key01", MDelOptions{I: true})()
 
-	resp, err = p.MGet("key01", MGetOptions{N: 10, CAS: true})()
+	resp, err := p.MGet("key01", MGetOptions{N: 10, CAS: true})()
 	assert.Equal(t, nil, err)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
@@ -316,14 +269,7 @@ func TestPipeline_Multiple_Times(t *testing.T) {
 }
 
 func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
-	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	fn := p.MGet("key01", MGetOptions{N: 10, CAS: true})
 
@@ -340,14 +286,9 @@ func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
 }
 
 func TestPipeline_Flush_All(t *testing.T) {
-	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
+	p := newPipelineTest(t)
 
-	p := c.Pipeline()
-	defer p.Finish()
-
-	_, err = p.MSet("key01", []byte("some value"), MSetOptions{})()
+	_, err := p.MSet("key01", []byte("some value"), MSetOptions{})()
 	assert.Equal(t, nil, err)
 
 	err = p.FlushAll()()
@@ -393,14 +334,7 @@ func TestPipeline_Execute(t *testing.T) {
 }
 
 func TestPipeline_Execute_And_Get_On_The_Same_Pipeline(t *testing.T) {
-	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t, WithRetryDuration(5*time.Second))
 
 	p.MSet("key01", []byte("some value 01"), MSetOptions{})
 	p.MSet("key02", []byte("some value 02"), MSetOptions{})
@@ -424,14 +358,7 @@ func TestPipeline_Execute_And_Get_On_The_Same_Pipeline(t *testing.T) {
 }
 
 func TestPipeline_Execute_And_Get_Immediately(t *testing.T) {
-	c, err := New("localhost:11211", 1, WithRetryDuration(5*time.Second))
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t, WithRetryDuration(5*time.Second))
 
 	p.MSet("key01", []byte("some value 01"), MSetOptions{})
 	p.MSet("key02", []byte("some value 02"), MSetOptions{})
@@ -458,12 +385,7 @@ func TestPipeline_Execute_And_Get_Immediately(t *testing.T) {
 }
 
 func TestPipeline_MSet_MGet_MDel__Invalid_Key_Format(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
+	p := newPipelineTest(t)
 
 	pipelineFlushAll(p)
 
@@ -514,14 +436,7 @@ func TestPipeline_MSet_MGet_MDel__Invalid_Key_Format(t *testing.T) {
 }
 
 func TestPipeline_MSet_With_Response_Type_EXISTS_And_NOT_FOUND(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	setResp, err := p.MSet("key01", []byte("value01"), MSetOptions{})()
 	assert.Equal(t, nil, err)
@@ -564,16 +479,9 @@ func TestPipeline_MSet_With_Response_Type_EXISTS_And_NOT_FOUND(t *testing.T) {
 }
 
 func TestPipeline_MDel__Not_Found_And_Exists(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
+	p := newPipelineTest(t)
 
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
-
-	_, err = p.MSet("key01", []byte("value01"), MSetOptions{})()
+	_, err := p.MSet("key01", []byte("value01"), MSetOptions{})()
 	assert.Equal(t, nil, err)
 
 	delResp, err := p.MDel("key01", MDelOptions{})()
@@ -613,14 +521,7 @@ func repeatBytes(c byte, n int) []byte {
 }
 
 func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	const headerSize = 56 // 8 * 7
 	const key = "key01"
@@ -647,14 +548,7 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 }
 
 func TestPipeline_Execute__When_Empty_Commands(t *testing.T) {
-	c, err := New("localhost:11211", 1)
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	pipelineFlushAll(p)
+	p := newPipelineTest(t)
 
 	p.Execute()
 
