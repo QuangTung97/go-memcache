@@ -13,6 +13,7 @@ func newCoreConnTest(writer FlushWriter, reader io.ReadCloser) *coreConnection {
 	return newCoreConnection(netconn.NetConn{
 		Writer: writer,
 		Reader: reader,
+		Closer: io.NopCloser(reader),
 	}, computeOptions())
 }
 

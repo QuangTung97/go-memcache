@@ -217,9 +217,6 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
-	cmd1.waitCompleted()
-	cmd2.waitCompleted()
-
 	assert.Equal(t, errors.New("some error"), cmd1.lastErr)
 	assert.Equal(t, errors.New("some error"), cmd2.lastErr)
 
@@ -250,9 +247,6 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
-	cmd1.waitCompleted()
-	cmd2.waitCompleted()
-
 	assert.Equal(t, errors.New("some error"), cmd1.lastErr)
 	assert.Equal(t, errors.New("some error"), cmd2.lastErr)
 
@@ -276,8 +270,8 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	closer.CloseFunc = func() error { return nil }
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
+
 	s.publish(cmd1)
-	cmd1.waitCompleted()
 
 	s.waitForError()
 	s.resetNetConn(netconn.NetConn{Writer: writer2, Reader: reader2, Closer: closer})
@@ -349,18 +343,63 @@ func TestRecvBuffer__Push_When_Closed(t *testing.T) {
 	var b recvBuffer
 	initRecvBuffer(&b, 1)
 
-	b.push([]*commandData{
+	remaining, closed := b.push([]*commandData{
 		newCommandFromString("mg key01 v\r\n"),
 		newCommandFromString("mg key02 v\r\n"),
 	})
+	assert.Equal(t, false, closed)
+	assert.Equal(t, 0, len(remaining))
 
 	b.closeBuffer()
 
-	b.push([]*commandData{
+	remaining, closed = b.push([]*commandData{
 		newCommandFromString("mg key03 v\r\n"),
 	})
+	assert.Equal(t, true, closed)
+	assert.Equal(t, []*commandData{newCommandFromString("mg key03 v\r\n")}, remaining)
 
 	cmdList := make([]*commandData, 1024)
 	size := b.read(cmdList)
 	assert.Equal(t, 2, size)
+}
+
+func TestRecvBuffer__Push_When_Closed__Concurrently_When_Reach_Limit(t *testing.T) {
+	var b recvBuffer
+	initRecvBuffer(&b, 1)
+
+	remaining, closed := b.push([]*commandData{
+		newCommandFromString("mg key01 v\r\n"),
+	})
+	assert.Equal(t, false, closed)
+	assert.Equal(t, 0, len(remaining))
+
+	cmdList := make([]*commandData, 1024)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		time.Sleep(20 * time.Millisecond)
+		b.closeBuffer()
+	}()
+
+	remaining, closed = b.push([]*commandData{
+		newCommandFromString("mg key02 v\r\n"),
+		newCommandFromString("mg key03 v\r\n"),
+	})
+
+	assert.Equal(t, true, closed)
+	assert.Equal(t, []*commandData{
+		newCommandFromString("mg key03 v\r\n"),
+	}, remaining)
+
+	wg.Wait()
+
+	size := b.read(cmdList)
+	assert.Equal(t, 2, size)
+	assert.Equal(t, []*commandData{
+		newCommandFromString("mg key01 v\r\n"),
+		newCommandFromString("mg key02 v\r\n"),
+	}, cmdList[:2])
 }
