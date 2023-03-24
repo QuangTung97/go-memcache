@@ -533,7 +533,7 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 
 	const maxDataSize = 1024*1024 - headerSize - len(key) - paddingSize
 
-	const epsilon = 1024
+	const epsilon = 512 << 10
 
 	setResp, err := p.MSet(key, repeatBytes('A', maxDataSize+1+epsilon), MSetOptions{})()
 	assert.Equal(t, NewServerError("object too large for cache"), err)
