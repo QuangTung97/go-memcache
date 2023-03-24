@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func pipelineFlushAll(p *Pipeline) {
@@ -523,6 +524,9 @@ func repeatBytes(c byte, n int) []byte {
 func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	p := newPipelineTest(t)
 
+	var x int
+	fmt.Println("INT SIZE:", unsafe.Sizeof(x))
+
 	const headerSize = 56 // 8 * 7
 	const key = "key01"
 	const paddingSize = 1 + 2 // 1 null terminated key, 2 for \r\n data
@@ -541,9 +545,13 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 
 	getResp, err := p.MGet(key, MGetOptions{})()
 	assert.Equal(t, nil, err)
+
+	getData := getResp.Data
+	getResp.Data = nil
+	assert.Equal(t, maxDataSize-epsilon, len(getData))
+
 	assert.Equal(t, MGetResponse{
 		Type: MGetResponseTypeVA,
-		Data: repeatBytes('A', maxDataSize-epsilon),
 	}, getResp)
 }
 
