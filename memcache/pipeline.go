@@ -97,7 +97,7 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 			panic("invalid cmd type")
 		}
 		if cmd.err != nil {
-			s.pipeline.c.core.sender.setNetConnError(cmd.err, cmd.sess.builder.cmd.reader)
+			s.pipeline.c.core.sender.setNetConnError(cmd.err, currentCmd.reader)
 		}
 	}
 
