@@ -12,10 +12,9 @@ jobs:
         image: memcached:1.6.18
         ports:
           - 11211:11211
-        command:
-          - memcached
-          - --memory-limit=128
-          - --max-item-size=1m
+        options: >-
+          --memory-limit=128
+          --max-item-size=1m
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
