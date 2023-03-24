@@ -9,12 +9,9 @@ jobs:
     runs-on: ubuntu-20.04
     services:
       memcached:
-        image: bitnami/memcached:1.6.18
+        image: memcached:1.6.18
         ports:
           - 11211:11211
-        env:
-          MEMCACHED_CACHE_SIZE: 128 # 128MB
-          MEMCACHED_MAX_ITEM_SIZE: 1048576 # 1MB
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
