@@ -396,14 +396,6 @@ func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
 	s.ncMut.Unlock()
 }
 
-func (s *sender) forceSetNetConnError(err error) {
-	s.ncMut.Lock()
-	if s.lastErr != ErrConnClosed {
-		_ = s.setLastErrorAndClose(err)
-	}
-	s.ncMut.Unlock()
-}
-
 // waitForNewEpoch used inside *pipeline.go*
 func (s *sender) waitForNewEpoch(waitEpoch uint64) error {
 	s.ncMut.Lock()
