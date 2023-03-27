@@ -253,6 +253,18 @@ func TestPipeline_MSet_Error_Key_Too_Long(t *testing.T) {
 
 	_, err := p.MSet(key, []byte(data), MSetOptions{})()
 	assert.Equal(t, ErrKeyTooLong, err)
+
+	// Set OK
+	key = strings.Repeat("a", 250)
+	_, err = p.MSet(key, []byte(data), MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	resp, err := p.MGet(key, MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte(data),
+	}, resp)
 }
 
 func TestPipeline_MSet_Error_Key_Too_Long__Disable_Check(t *testing.T) {

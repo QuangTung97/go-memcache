@@ -12,6 +12,13 @@ jobs:
         image: memcached:1.6.18
         ports:
           - 11211:11211
+      memcached_auth:
+        image: quangtung97/memcached:1.6.18
+        ports:
+          - 11212:11211
+        env:
+          MEMCACHED_USERNAME: user01
+          MEMCACHED_PASSWORD: password01
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2

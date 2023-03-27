@@ -62,8 +62,11 @@ func (r *timeoutReader) Read(p []byte) (n int, err error) {
 	return r.ReadCloser.Read(p)
 }
 
+// DialFunc ...
+type DialFunc = func(network, address string, timeout time.Duration) (net.Conn, error)
+
 type config struct {
-	dialFunc func(network, address string, timeout time.Duration) (net.Conn, error)
+	dialFunc DialFunc
 
 	tcpKeepAliveDuration time.Duration
 
@@ -194,7 +197,7 @@ func WithTCPKeepAliveDuration(d time.Duration) Option {
 }
 
 // WithDialFunc ...
-func WithDialFunc(dialFunc func(network, address string, timeout time.Duration) (net.Conn, error)) Option {
+func WithDialFunc(dialFunc DialFunc) Option {
 	return func(conf *config) {
 		conf.dialFunc = dialFunc
 	}

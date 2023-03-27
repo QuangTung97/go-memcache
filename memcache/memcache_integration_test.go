@@ -411,3 +411,69 @@ func TestClient__WriteTimeout(t *testing.T) {
 	}
 	connMut.Unlock()
 }
+
+func TestClient_Connect_To_Memcached_Need_Password__But_Not_Provided(t *testing.T) {
+	c, err := New("localhost:11212", 1)
+	assert.Equal(t, nil, err)
+	t.Cleanup(func() { _ = c.Close() })
+
+	pipe := c.Pipeline()
+	t.Cleanup(pipe.Finish)
+
+	const key = "key01"
+	data := []byte("some data")
+
+	_, err = pipe.MSet(key, data, MSetOptions{})()
+	assert.Equal(t, ErrClientError{Message: "unauthenticated"}, err)
+
+	resp, err := pipe.MGet(key, MGetOptions{})()
+	assert.Equal(t, ErrClientError{Message: "unauthenticated"}, err)
+	assert.Equal(t, MGetResponse{}, resp)
+}
+
+func TestClient_Connect_To_Memcached_Need_Password_And_Provided(t *testing.T) {
+	plain, err := netconn.NewPasswordAuth("user01", "password01")
+	assert.Equal(t, nil, err)
+
+	c, err := New("localhost:11212", 1, WithDialFunc(plain.GetDialFunc(net.DialTimeout)))
+	assert.Equal(t, nil, err)
+	t.Cleanup(func() { _ = c.Close() })
+
+	pipe := c.Pipeline()
+	t.Cleanup(pipe.Finish)
+
+	const key = "key01"
+	data := []byte("some data")
+
+	_, err = pipe.MSet(key, data, MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	resp, err := pipe.MGet(key, MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: data,
+	}, resp)
+}
+
+func TestClient_Connect_To_Memcached_Need_Password_And_Wrong_Pass_Provided(t *testing.T) {
+	plain, err := netconn.NewPasswordAuth("user", "pass")
+	assert.Equal(t, nil, err)
+
+	c, err := New("localhost:11212", 1, WithDialFunc(plain.GetDialFunc(net.DialTimeout)))
+	assert.Equal(t, nil, err)
+	t.Cleanup(func() { _ = c.Close() })
+
+	pipe := c.Pipeline()
+	t.Cleanup(pipe.Finish)
+
+	const key = "key01"
+	data := []byte("some data")
+
+	_, err = pipe.MSet(key, data, MSetOptions{})()
+	assert.Equal(t, netconn.ErrInvalidUsernamePassword, err)
+
+	resp, err := pipe.MGet(key, MGetOptions{})()
+	assert.Equal(t, netconn.ErrInvalidUsernamePassword, err)
+	assert.Equal(t, MGetResponse{}, resp)
+}
