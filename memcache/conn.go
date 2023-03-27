@@ -9,6 +9,15 @@ import (
 type clientConn struct {
 	wg   sync.WaitGroup
 	core *coreConnection
+
+	closeChan chan struct{}
+}
+
+func sleepWithCloseChan(d time.Duration, closeChan <-chan struct{}) {
+	select {
+	case <-closeChan:
+	case <-time.After(d):
+	}
 }
 
 func newConn(addr string, options ...Option) *clientConn {
@@ -21,7 +30,8 @@ func newConn(addr string, options ...Option) *clientConn {
 	}
 
 	c := &clientConn{
-		core: newCoreConnection(nc, opts),
+		core:      newCoreConnection(nc, opts),
+		closeChan: make(chan struct{}),
 	}
 
 	c.wg.Add(1)
@@ -44,7 +54,7 @@ func newConn(addr string, options ...Option) *clientConn {
 				}
 				retryErrorCount++
 
-				time.Sleep(opts.retryDuration)
+				sleepWithCloseChan(opts.retryDuration, c.closeChan)
 				continue
 			}
 
@@ -62,6 +72,7 @@ func (c *clientConn) pushCommand(cmd *commandData) {
 }
 
 func (c *clientConn) shutdown() error {
+	close(c.closeChan)
 	c.core.shutdown()
 	err := c.core.sender.closeNetConn()
 	return err
