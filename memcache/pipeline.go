@@ -317,7 +317,13 @@ func validateKeyFormat(key string) error {
 		return ErrKeyEmpty
 	}
 	for _, r := range key {
+		if r > unicode.MaxASCII {
+			return ErrInvalidKeyFormat
+		}
 		if unicode.IsControl(r) {
+			return ErrInvalidKeyFormat
+		}
+		if unicode.IsSpace(r) {
 			return ErrInvalidKeyFormat
 		}
 	}

@@ -3,10 +3,12 @@ package memcache
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"math/rand"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 	"unsafe"
 )
 
@@ -186,6 +188,60 @@ func TestPipeline_MSet_Then_Mget_Special_Characters(t *testing.T) {
 		Type: MGetResponseTypeVA,
 		Data: []byte(data),
 	}, resp)
+}
+
+func TestPipeline_MSet_With_Key_Contains_Special_Characters(t *testing.T) {
+	p := newPipelineTest(t)
+
+	key := "😀😃😄😁"
+	data := "some data"
+
+	_, err := p.MSet(key, []byte(data), MSetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+}
+
+func TestPipeline_MSet_With_Key_Contains_Non_Latin_Characters(t *testing.T) {
+	p := newPipelineTest(t)
+
+	key := string([]byte{128, 128})
+	data := "some data"
+
+	_, err := p.MSet(key, []byte(data), MSetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+
+	_, err = p.MGet(key, MGetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+}
+
+func TestPipeline_MSet_With_Key_Contains_Spaces(t *testing.T) {
+	p := newPipelineTest(t)
+
+	key := "some key"
+	data := "some data"
+
+	_, err := p.MSet(key, []byte(data), MSetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+
+	_, err = p.MGet(key, MGetOptions{})()
+	assert.Equal(t, ErrInvalidKeyFormat, err)
+}
+
+func TestPipeline_MSet_With_Random_Keys(t *testing.T) {
+	p := newPipelineTest(t)
+
+	seed := time.Now().UnixNano()
+	rand.Seed(seed)
+	fmt.Println("SEED:", seed)
+
+	for i := 0; i <= unicode.MaxASCII; i++ {
+		c := byte(i)
+		key := string([]byte{c})
+		_, err := p.MSet(key, []byte("some data"), MSetOptions{})()
+		if err == ErrInvalidKeyFormat {
+			continue
+		}
+		assert.Equal(t, nil, err)
+	}
 }
 
 func TestPipeline_MSet_Error_Key_Too_Long(t *testing.T) {
