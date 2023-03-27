@@ -33,8 +33,22 @@ func NewServerError(msg string) error {
 	return ErrServerError{Message: msg}
 }
 
-// ErrObjectTooBig ...
-var ErrObjectTooBig = NewServerError("object too large for cache")
+// ObjectTooBigErrorMsg ...
+const ObjectTooBigErrorMsg = "object too large for cache"
+
+// OutOfMemoryErrorMsg ...
+const OutOfMemoryErrorMsg = "out of memory storing object"
+
+// IsServerErrorMsg ...
+func IsServerErrorMsg(err error, msg string) bool {
+	serverErr, ok := err.(ErrServerError)
+	if ok {
+		if serverErr.Message == msg {
+			return true
+		}
+	}
+	return false
+}
 
 // ErrClientError ...
 type ErrClientError struct {

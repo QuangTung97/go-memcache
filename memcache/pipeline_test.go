@@ -605,7 +605,7 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	const maxDataSize = 1024*1024 - headerSize - len(key1) - paddingSize
 
 	setResp, err := p.MSet(key1, repeatBytes('A', maxDataSize+1), MSetOptions{})()
-	assert.Equal(t, ErrObjectTooBig, err)
+	assert.Equal(t, NewServerError(ObjectTooBigErrorMsg), err)
 	assert.Equal(t, MSetResponse{}, setResp)
 
 	setResp, err = p.MSet(key2, repeatBytes('A', maxDataSize), MSetOptions{})()

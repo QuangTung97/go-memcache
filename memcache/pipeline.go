@@ -96,7 +96,11 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 		default:
 			panic("invalid cmd type")
 		}
-		if cmd.err != nil && cmd.err != ErrObjectTooBig {
+
+		if cmd.err != nil {
+			if IsServerErrorMsg(cmd.err, ObjectTooBigErrorMsg) {
+				continue
+			}
 			s.pipeline.c.core.sender.setNetConnError(cmd.err, currentCmd.reader)
 		}
 	}
