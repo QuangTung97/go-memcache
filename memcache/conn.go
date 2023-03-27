@@ -10,6 +10,8 @@ type clientConn struct {
 	wg   sync.WaitGroup
 	core *coreConnection
 
+	mut       sync.Mutex
+	closed    bool
 	closeChan chan struct{}
 }
 
@@ -72,7 +74,13 @@ func (c *clientConn) pushCommand(cmd *commandData) {
 }
 
 func (c *clientConn) shutdown() error {
-	close(c.closeChan)
+	c.mut.Lock()
+	if !c.closed {
+		c.closed = true
+		close(c.closeChan)
+	}
+	c.mut.Unlock()
+
 	c.core.shutdown()
 	err := c.core.sender.closeNetConn()
 	return err
