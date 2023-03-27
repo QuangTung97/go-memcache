@@ -33,6 +33,9 @@ func NewServerError(msg string) error {
 	return ErrServerError{Message: msg}
 }
 
+// ErrObjectTooBig ...
+var ErrObjectTooBig = NewServerError("object too large for cache")
+
 // ErrClientError ...
 type ErrClientError struct {
 	Message string
