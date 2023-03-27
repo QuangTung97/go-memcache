@@ -596,28 +596,28 @@ func TestPipeline_MSet_Data__TOO_BIG(t *testing.T) {
 	fmt.Println("INT SIZE:", unsafe.Sizeof(x))
 
 	const headerSize = 56 // 8 * 7
-	const key = "key01"
+
+	const key1 = "key01"
+	const key2 = "key02"
+
 	const paddingSize = 1 + 2 // 1 null terminated key, 2 for \r\n data
 
-	const maxDataSize = 1024*1024 - headerSize - len(key) - paddingSize
+	const maxDataSize = 1024*1024 - headerSize - len(key1) - paddingSize
 
-	const epsilon = 512<<10 + 256
-
-	setResp, err := p.MSet(key, repeatBytes('A', maxDataSize+1+epsilon), MSetOptions{})()
+	setResp, err := p.MSet(key1, repeatBytes('A', maxDataSize+1), MSetOptions{})()
 	assert.Equal(t, NewServerError("object too large for cache"), err)
 	assert.Equal(t, MSetResponse{}, setResp)
 
-	fmt.Println("Set Size:", maxDataSize-epsilon)
-	setResp, err = p.MSet(key, repeatBytes('A', maxDataSize-epsilon), MSetOptions{})()
+	setResp, err = p.MSet(key2, repeatBytes('A', maxDataSize), MSetOptions{})()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
 
-	getResp, err := p.MGet(key, MGetOptions{})()
+	getResp, err := p.MGet(key2, MGetOptions{})()
 	assert.Equal(t, nil, err)
 
 	getData := getResp.Data
 	getResp.Data = nil
-	assert.Equal(t, maxDataSize-epsilon, len(getData))
+	assert.Equal(t, maxDataSize, len(getData))
 
 	assert.Equal(t, MGetResponse{
 		Type: MGetResponseTypeVA,
