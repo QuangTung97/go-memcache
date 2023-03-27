@@ -477,3 +477,36 @@ func TestClient_Connect_To_Memcached_Need_Password_And_Wrong_Pass_Provided(t *te
 	assert.Equal(t, netconn.ErrInvalidUsernamePassword, err)
 	assert.Equal(t, MGetResponse{}, resp)
 }
+
+func TestClient_Connect_To_Memcached_Not_Need_Password(t *testing.T) {
+	plain, err := netconn.NewPasswordAuth("user", "pass")
+	assert.Equal(t, nil, err)
+
+	c, err := New("localhost:11211", 1, WithDialFunc(plain.GetDialFunc(net.DialTimeout)))
+	assert.Equal(t, nil, err)
+	t.Cleanup(func() { _ = c.Close() })
+
+	pipe := c.Pipeline()
+	t.Cleanup(pipe.Finish)
+
+	const key = "key01"
+	data := []byte("some data")
+
+	setResp, err := pipe.MSet(key, data, MSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
+
+	resp, err := pipe.MGet(key, MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: data,
+	}, resp)
+
+	resp, err = pipe.MGet("memcached_auth", MGetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("user pass"),
+	}, resp)
+}

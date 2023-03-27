@@ -49,7 +49,7 @@ func (a *PasswordAuth) GetDialFunc(dialFunc DialFunc) DialFunc {
 		}
 
 		n := len(a.username) + len(a.password) + 1
-		msg := fmt.Sprintf("set auth 0 0 %d\r\n%s %s\r\n", n, a.username, a.password)
+		msg := fmt.Sprintf("set memcached_auth 0 0 %d\r\n%s %s\r\n", n, a.username, a.password)
 
 		_, err = conn.Write([]byte(msg))
 		if err != nil {
