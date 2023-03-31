@@ -3,6 +3,7 @@ package memcache
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
@@ -55,15 +56,21 @@ type commandData struct {
 
 	responseBinaries [][]byte // mget binary responses
 
-	completed bool
-
 	epoch  uint64
 	reader io.ReadCloser
 
-	lastErr error
+	lastErrAtomic atomic.Pointer[lastError]
+	lastErr       error
 
-	mut  sync.Mutex
-	cond *sync.Cond
+	ch chan error
+}
+
+type lastError struct {
+	err error
+}
+
+func newCommandChannel() chan error {
+	return make(chan error, 1)
 }
 
 func newCommand() *commandData {
@@ -71,7 +78,7 @@ func newCommand() *commandData {
 		requestData:  requestBytesPool.get(),
 		responseData: responseBytesPool.get(),
 	}
-	c.cond = sync.NewCond(&c.mut)
+	c.ch = newCommandChannel()
 	return c
 }
 
@@ -80,7 +87,7 @@ func (c *commandData) cloneShareRequest() *commandData {
 		cmdCount:    c.cmdCount,
 		requestData: c.requestData,
 	}
-	result.cond = sync.NewCond(&result.mut)
+	result.ch = newCommandChannel()
 	return result
 }
 
@@ -90,36 +97,24 @@ func freeCommandData(cmd *commandData) {
 }
 
 func (c *commandData) waitCompleted() {
-	c.mut.Lock()
-	for !c.completed {
-		c.cond.Wait()
+	err := <-c.ch
+
+	atomicErr := c.lastErrAtomic.Load()
+	if atomicErr != nil && atomicErr.err != nil {
+		err = atomicErr.err
 	}
-	c.mut.Unlock()
+
+	c.lastErr = err
 }
 
 func (c *commandData) setErrorOnly(err error) {
-	c.mut.Lock()
-	c.lastErr = err
-	c.mut.Unlock()
+	c.lastErrAtomic.Store(&lastError{
+		err: err,
+	})
 }
 
 func (c *commandData) setCompleted(err error) {
-	c.mut.Lock()
-
-	if c.completed {
-		c.mut.Unlock()
-		return
-	}
-	c.completed = true
-
-	// not override error
-	if c.lastErr == nil {
-		c.lastErr = err
-	}
-
-	c.mut.Unlock()
-
-	c.cond.Signal()
+	c.ch <- err
 }
 
 type sender struct {
