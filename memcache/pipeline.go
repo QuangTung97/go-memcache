@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"unicode"
+	"unsafe"
 )
 
 // ErrAlreadyGotten ...
@@ -26,7 +27,7 @@ type pipelineCmd struct {
 	sess *pipelineSession
 
 	cmdType commandType
-	resp    any
+	resp    unsafe.Pointer
 	err     error
 
 	isRead bool
@@ -82,13 +83,16 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 	for _, cmd := range s.currentCmdList {
 		switch cmd.cmdType {
 		case commandTypeMGet:
-			cmd.resp, cmd.err = ps.readMGet()
+			resp, err := ps.readMGet()
+			cmd.resp, cmd.err = unsafe.Pointer(&resp), err
 
 		case commandTypeMSet:
-			cmd.resp, cmd.err = ps.readMSet()
+			resp, err := ps.readMSet()
+			cmd.resp, cmd.err = unsafe.Pointer(&resp), err
 
 		case commandTypeMDel:
-			cmd.resp, cmd.err = ps.readMDel()
+			resp, err := ps.readMDel()
+			cmd.resp, cmd.err = unsafe.Pointer(&resp), err
 
 		case commandTypeFlushAll:
 			cmd.err = ps.readFlushAll()
@@ -226,11 +230,11 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 		if err != nil {
 			return MGetResponse{}, err
 		}
-		resp, ok := cmd.resp.(MGetResponse)
-		if !ok {
+		resp := (*MGetResponse)(cmd.resp)
+		if resp == nil {
 			return MGetResponse{}, cmd.err
 		}
-		return resp, cmd.err
+		return *resp, cmd.err
 	}
 }
 
@@ -250,11 +254,11 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 		if err != nil {
 			return MSetResponse{}, err
 		}
-		resp, ok := cmd.resp.(MSetResponse)
-		if !ok {
+		resp := (*MSetResponse)(cmd.resp)
+		if resp == nil {
 			return MSetResponse{}, cmd.err
 		}
-		return resp, cmd.err
+		return *resp, cmd.err
 	}
 }
 
@@ -275,11 +279,11 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 		if err != nil {
 			return MDelResponse{}, err
 		}
-		resp, ok := cmd.resp.(MDelResponse)
-		if !ok {
+		resp := (*MDelResponse)(cmd.resp)
+		if resp == nil {
 			return MDelResponse{}, cmd.err
 		}
-		return resp, cmd.err
+		return *resp, cmd.err
 	}
 }
 

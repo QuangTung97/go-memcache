@@ -45,13 +45,23 @@ func TestClient_New_Connect_Error(t *testing.T) {
 	pipe := c.Pipeline()
 	defer pipe.Finish()
 
-	resp, err := pipe.MGet("KEY01", MGetOptions{})()
+	fn1 := pipe.MGet("KEY01", MGetOptions{})
+	fn2 := pipe.MDel("KEY02", MDelOptions{})
+	fn3 := pipe.MSet("KEY03", []byte("some value"), MSetOptions{})
+
+	resp, err := fn1()
+	delResp, delErr := fn2()
+	setResp, setErr := fn3()
 
 	mut.Lock()
 	assert.Equal(t, logErr, err)
+	assert.Equal(t, logErr, delErr)
+	assert.Equal(t, logErr, setErr)
 	mut.Unlock()
 
 	assert.Equal(t, MGetResponse{}, resp)
+	assert.Equal(t, MDelResponse{}, delResp)
+	assert.Equal(t, MSetResponse{}, setResp)
 }
 
 func TestClient_Connection_Error_And_Retry(t *testing.T) {
