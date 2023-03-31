@@ -129,8 +129,10 @@ func (r *responseReader) handleGetNum(data []byte) []byte {
 			r.dataLen += uint64(r.tmpData[i] - '0')
 		}
 
+		r.currentBinary = make([]byte, r.dataLen)
+		r.currentIndex = 0
+
 		r.dataLen += 2 // CR + LF
-		r.currentBinary = make([]byte, 0, r.dataLen)
 
 		r.state = readerStateFindCRForVA
 		return data[index:]
@@ -165,12 +167,17 @@ func (r *responseReader) handleBinaryData(data []byte) []byte {
 
 	r.dataLen -= n
 
-	r.currentBinary = append(r.currentBinary, data[:n]...)
+	copyLen := int(n)
+	if r.dataLen == 0 {
+		copyLen -= 2
+	}
+
+	copy(r.currentBinary[r.currentIndex:], data[:copyLen])
+	r.currentIndex += copyLen
 
 	if r.dataLen == 0 {
 		r.state = readerStateCompleted
 
-		r.currentBinary = r.currentBinary[:len(r.currentBinary)-2]
 		r.currentCmd.responseBinaries = append(r.currentCmd.responseBinaries, r.currentBinary)
 		r.currentBinary = nil
 
