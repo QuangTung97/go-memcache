@@ -179,7 +179,10 @@ func (s *pipelineSession) pushCommands(cmd *commandData) {
 func (s *pipelineSession) pushCommandsIfNotPublished() {
 	if !s.published {
 		s.published = true
-		s.pushCommands(s.builder.getCmd())
+
+		builderCmd := s.builder.getCmd()
+		builderCmd.responseBinaries = make([][]byte, 0, builderCmd.cmdCount)
+		s.pushCommands(builderCmd)
 	}
 }
 

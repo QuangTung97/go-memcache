@@ -68,9 +68,8 @@ type commandData struct {
 
 func newCommand() *commandData {
 	c := &commandData{
-		requestData:      requestBytesPool.get(),
-		responseData:     responseBytesPool.get(),
-		responseBinaries: make([][]byte, 0, 16),
+		requestData:  requestBytesPool.get(),
+		responseData: responseBytesPool.get(),
 	}
 	c.cond = sync.NewCond(&c.mut)
 	return c
