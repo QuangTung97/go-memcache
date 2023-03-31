@@ -22,7 +22,7 @@ func newCoreConnection(nc netconn.NetConn, options *memcacheOptions) *coreConnec
 	cmdSender := newSender(nc, 10)
 
 	c := &coreConnection{
-		responseReader: newResponseReader(21),
+		responseReader: newResponseReader(),
 		sender:         cmdSender,
 
 		shuttingDown: 0,
@@ -65,7 +65,7 @@ func (c *coreConnection) recvCommands() {
 	defer c.wg.Done()
 
 	for {
-		err := c.recvSingleCommand()
+		err := c.recvSingleCommandData()
 		if err == ErrConnClosed { // cmd len == 0
 			return
 		}
@@ -74,51 +74,51 @@ func (c *coreConnection) recvCommands() {
 
 			reader := c.cmdList.current().reader
 			c.sender.setNetConnError(err, reader)
-			_ = reader.Close()
 		}
 		c.cmdList.current().setCompleted(err)
 		c.cmdList.next()
 	}
 }
 
-//revive:disable:cognitive-complexity
-func (c *coreConnection) recvSingleCommand() error {
-	responseCount := 0
+func (c *coreConnection) recvSingleCommandData() error {
+	cmdLen := c.cmdList.readIfExhausted()
+	if cmdLen == 0 {
+		return ErrConnClosed
+	}
 
-	for {
-		cmdLen := c.cmdList.readIfExhausted()
-		if cmdLen == 0 {
-			return ErrConnClosed
-		}
+	current := c.cmdList.current()
+	c.responseReader.setCurrentCommand(current)
 
-		current := c.cmdList.current()
-
-		// Read from response reader
-		ok := c.responseReader.hasNext()
-		if !ok {
-			if c.responseReader.hasError() != nil {
-				return c.responseReader.hasError() // TODO testing
-			}
-
-			n, err := current.reader.Read(c.msgData)
-			if err != nil {
-				return err
-			}
-
-			c.responseReader.recv(c.msgData[:n])
-			continue
-		}
-
-		current.responseData = c.responseReader.readData(current.responseData)
-		responseCount++
-
-		if responseCount >= current.cmdCount {
-			return nil
+	for count := 0; count < current.cmdCount; count++ {
+		err := c.readNextMemcacheCommandResponse(current)
+		if err != nil {
+			return err
 		}
 	}
+
+	return nil
 }
 
-//revive:enable:cognitive-complexity
+func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) error {
+	for {
+		// Read from response reader
+		ok := c.responseReader.readNextData()
+		if ok {
+			return nil
+		}
+
+		if c.responseReader.hasError() != nil {
+			return c.responseReader.hasError() // TODO testing
+		}
+
+		n, err := current.reader.Read(c.msgData)
+		if err != nil {
+			return err
+		}
+
+		c.responseReader.recv(c.msgData[:n])
+	}
+}
 
 type cmdListReader struct {
 	sender *sender

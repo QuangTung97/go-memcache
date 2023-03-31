@@ -9,11 +9,14 @@ import (
 	"time"
 )
 
-func newCoreConnTest(writer FlushWriter, reader io.ReadCloser) *coreConnection {
+func newCoreConnTest(
+	writer FlushWriter, reader io.ReadCloser,
+	closer io.Closer,
+) *coreConnection {
 	return newCoreConnection(netconn.NetConn{
 		Writer: writer,
 		Reader: reader,
-		Closer: io.NopCloser(reader),
+		Closer: closer,
 	}, computeOptions())
 }
 
@@ -21,7 +24,7 @@ func TestCoreConnection_Read_Error_Partial_Result(t *testing.T) {
 	writer1 := &FlushWriterMock{}
 	reader1 := &readCloserInterfaceMock{}
 
-	c := newCoreConnTest(writer1, reader1)
+	c := newCoreConnTest(writer1, reader1, reader1)
 
 	writer1.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil
@@ -86,7 +89,7 @@ func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_
 	writer1 := &FlushWriterMock{}
 	reader1 := &readCloserInterfaceMock{}
 
-	c := newCoreConnTest(writer1, reader1)
+	c := newCoreConnTest(writer1, reader1, reader1)
 
 	writer1.WriteFunc = func(p []byte) (int, error) { return len(p), nil }
 	writer1.FlushFunc = func() error { return nil }

@@ -1,145 +1,236 @@
 package memcache
 
+type readerState int
+
+const (
+	readerStateInit readerState = iota + 1
+	readerStateCompleted
+	readerStateFindLF
+
+	readerStateFindA
+	readerStateFindFirstNum
+	readerStateGetNum
+	readerStateFindCRForVA
+	readerStateFindLFForVA
+	readerStateReadBinaryData
+)
+
 type responseReader struct {
-	data     []byte
-	begin    uint64
-	end      uint64
-	dataMask uint64
+	currentCmd *commandData
 
-	lastPos    uint64
-	waitForEnd uint64
+	state   readerState
+	tmpData []byte
 
+	dataLen uint64
 	lastErr error
+
+	remainingData []byte
 }
 
-func newResponseReader(sizeLog int) *responseReader {
-	return &responseReader{
-		data:     make([]byte, 1<<sizeLog),
-		begin:    0,
-		end:      0,
-		dataMask: 1<<sizeLog - 1,
-
-		lastPos: 0,
+func newResponseReader() *responseReader {
+	r := &responseReader{
+		tmpData: make([]byte, 0, 64),
 	}
+	r.reset()
+	return r
 }
 
-func (r *responseReader) getCap() uint64 {
-	return uint64(len(r.data))
+var errNoLFAfterCR = ErrBrokenPipe{reason: "no LF after CR"}
+
+var errInvalidVA = ErrBrokenPipe{reason: "no A after V"}
+
+var errNotNumberAfterVA = ErrBrokenPipe{reason: "not a number after VA"}
+
+func (r *responseReader) writeResponse(data []byte) {
+	r.currentCmd.responseData = append(r.currentCmd.responseData, data...)
 }
 
-func (r *responseReader) recv(data []byte) {
-	first := r.getIndex(r.end)
-	copy(r.data[first:], data)
-
-	max := r.getCap()
-	if first+uint64(len(data)) > max {
-		firstPart := max - first
-		copy(r.data, data[firstPart:])
-	}
-
-	r.end += uint64(len(data))
+func (r *responseReader) setErrorAndReturn(err error) []byte {
+	r.lastErr = err
+	r.state = readerStateCompleted
+	return nil
 }
 
-func (r *responseReader) getIndex(pos uint64) uint64 {
-	return pos & r.dataMask
+func (r *responseReader) setCompleted(data []byte, splitPoint int) []byte {
+	r.state = readerStateCompleted
+	r.writeResponse(data[:splitPoint])
+	r.remainingData = data[splitPoint:]
+	return nil
 }
 
-func (r *responseReader) findFirstNumberPos(start uint64, end uint64) (uint64, error) {
-	for pos := start; pos < end; pos++ {
-		i := r.getIndex(pos)
-		if r.data[i] >= '0' && r.data[i] <= '9' {
-			return pos, nil
+func (r *responseReader) processedSingleChar(data []byte, index int, newState readerState) []byte {
+	r.writeResponse(data[:index+1])
+	r.state = newState
+	return data[index+1:]
+}
+
+func (r *responseReader) simpleContinue(data []byte) []byte {
+	r.writeResponse(data)
+	return nil
+}
+
+func (r *responseReader) handleStateInit(data []byte) []byte {
+	for index, c := range data {
+		if c == 'V' && index == 0 {
+			return r.processedSingleChar(data, index, readerStateFindA)
+		}
+		if c == '\r' {
+			return r.processedSingleChar(data, index, readerStateFindLF)
 		}
 	}
-	return end, ErrBrokenPipe{reason: "not a number after VA"}
+	return r.simpleContinue(data)
 }
 
-func (r *responseReader) parseIntFrom(start uint64, end uint64) (uint64, error) {
-	result := uint64(0)
-
-	start, err := r.findFirstNumberPos(start, end)
-	if err != nil {
-		return 0, err
+func (r *responseReader) handleFindA(data []byte) []byte {
+	if data[0] == 'A' {
+		r.state = readerStateFindFirstNum
+		r.writeResponse(data[:1])
+		return data[1:]
 	}
-	for pos := start; pos < end; pos++ {
-		i := r.getIndex(pos)
-		if r.data[i] < '0' || r.data[i] > '9' {
-			break
-		}
-		num := uint64(r.data[i] - '0')
-		result *= 10
-		result += num
-	}
-
-	return result, nil
+	return r.setErrorAndReturn(errInvalidVA)
 }
 
-func (r *responseReader) isCRLF(pos uint64) bool {
-	return r.data[r.getIndex(pos)] == '\r' && r.data[r.getIndex(pos+1)] == '\n'
-}
-
-func (r *responseReader) isVA(pos uint64) bool {
-	return r.data[r.getIndex(pos)] == 'V' && r.data[r.getIndex(pos+1)] == 'A'
-}
-
-func (r *responseReader) returnIfHasFullResponseData() bool {
-	if r.waitForEnd <= r.end {
-		r.lastPos = r.waitForEnd
-		r.waitForEnd = 0
-		return true
-	}
-	return false
-}
-
-func (r *responseReader) hasNext() bool {
-	if r.waitForEnd > 0 {
-		return r.returnIfHasFullResponseData()
-	}
-
-	for pos := r.lastPos; pos+1 < r.end; pos++ {
-		if !r.isCRLF(pos) {
+func (r *responseReader) handleFindFirstNum(data []byte) []byte {
+	for index, c := range data {
+		if c == ' ' {
 			continue
 		}
 
-		r.lastPos = pos + 2
-		if r.isVA(r.begin) {
-			dataLen, err := r.parseIntFrom(r.begin+2, pos)
-			if err != nil {
-				r.lastErr = err
-				return false
-			}
-			r.waitForEnd = r.lastPos + dataLen + 2
-			return r.returnIfHasFullResponseData()
+		if c >= '0' && c <= '9' {
+			r.tmpData = r.tmpData[:0]
+			r.tmpData = append(r.tmpData, c)
+			r.state = readerStateGetNum
+			r.writeResponse(data[:index+1])
+			return data[index+1:]
 		}
-		return true
+
+		return r.setErrorAndReturn(errNotNumberAfterVA)
 	}
-	if r.end >= r.begin+2 {
-		r.lastPos = r.end - 2
-	}
-	return false
+
+	return r.simpleContinue(data)
 }
 
-func (r *responseReader) readData(data []byte) []byte {
-	n := r.lastPos - r.begin
-	first := r.getIndex(r.begin)
-	max := r.getCap()
+func (r *responseReader) handleGetNum(data []byte) []byte {
+	for index, c := range data {
+		if c >= '0' && c <= '9' {
+			r.tmpData = append(r.tmpData, c)
+			continue
+		}
 
-	firstEnd := first + n
-	if firstEnd > max {
-		firstEnd = max
+		r.writeResponse(data[:index])
+
+		n := len(r.tmpData)
+		r.dataLen = uint64(r.tmpData[0] - '0')
+		for i := 1; i < n; i++ {
+			r.dataLen *= 10
+			r.dataLen += uint64(r.tmpData[i] - '0')
+		}
+
+		r.dataLen += 2 // CR + LF
+
+		r.state = readerStateFindCRForVA
+		return data[index:]
 	}
 
-	data = append(data, r.data[first:firstEnd]...)
+	return r.simpleContinue(data)
+}
 
-	if firstEnd == max {
-		firstPart := max - first
-		secondPart := n - firstPart
-		data = append(data, r.data[:secondPart]...)
+func (r *responseReader) handleFindCRForVA(data []byte) []byte {
+	for index, c := range data {
+		if c == '\r' {
+			return r.processedSingleChar(data, index, readerStateFindLFForVA)
+		}
+	}
+	return r.simpleContinue(data)
+}
+
+func (r *responseReader) handleFindLFForVA(data []byte) []byte {
+	if data[0] != '\n' {
+		return r.setErrorAndReturn(errNoLFAfterCR)
+	}
+	r.writeResponse(data[:1])
+	r.state = readerStateReadBinaryData
+	return data[1:]
+}
+
+func (r *responseReader) handleBinaryData(data []byte) []byte {
+	n := uint64(len(data))
+	if r.dataLen < n {
+		n = r.dataLen
 	}
 
-	r.begin = r.lastPos
+	r.dataLen -= n
 
-	return data
+	if r.dataLen == 0 {
+		r.state = readerStateCompleted
+		r.writeResponse(data[:n])
+		r.remainingData = data[n:]
+		return nil
+	}
+
+	r.writeResponse(data[:n])
+	return data[n:]
+}
+
+func (r *responseReader) recvInLoop(data []byte) []byte {
+	switch r.state {
+	case readerStateInit:
+		return r.handleStateInit(data)
+
+	case readerStateFindA:
+		return r.handleFindA(data)
+
+	case readerStateFindFirstNum:
+		return r.handleFindFirstNum(data)
+
+	case readerStateGetNum:
+		return r.handleGetNum(data)
+
+	case readerStateFindCRForVA:
+		return r.handleFindCRForVA(data)
+
+	case readerStateFindLFForVA:
+		return r.handleFindLFForVA(data)
+
+	case readerStateReadBinaryData:
+		return r.handleBinaryData(data)
+
+	case readerStateFindLF:
+		if data[0] != '\n' {
+			return r.setErrorAndReturn(errNoLFAfterCR)
+		}
+
+		return r.setCompleted(data, 1)
+
+	default:
+		panic("invalid reader usage")
+	}
+}
+
+func (r *responseReader) recv(data []byte) {
+	for len(data) > 0 {
+		data = r.recvInLoop(data)
+	}
+}
+
+func (r *responseReader) setCurrentCommand(cmd *commandData) {
+	r.currentCmd = cmd
+}
+
+func (r *responseReader) readNextData() bool {
+	for {
+		if r.state == readerStateCompleted {
+			r.state = readerStateInit
+			return true
+		}
+
+		if r.state == readerStateInit && len(r.remainingData) > 0 {
+			r.recv(r.remainingData)
+			continue
+		}
+
+		return false
+	}
 }
 
 func (r *responseReader) hasError() error {
@@ -147,9 +238,7 @@ func (r *responseReader) hasError() error {
 }
 
 func (r *responseReader) reset() {
-	r.begin = 0
-	r.end = 0
-	r.lastPos = 0
-	r.waitForEnd = 0
+	r.tmpData = r.tmpData[:]
+	r.state = readerStateInit
 	r.lastErr = nil
 }

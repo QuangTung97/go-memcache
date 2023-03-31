@@ -121,7 +121,7 @@ func (c *commandData) setCompleted(err error) {
 }
 
 type sender struct {
-	//---- protected by ncMut ------
+	// ---- protected by ncMut ------
 	nc netconn.NetConn
 
 	alreadyClosed bool
@@ -135,7 +135,7 @@ type sender struct {
 	lastErr       error
 	ncErrorCond   *sync.Cond
 	epochWaitCond *sync.Cond
-	//---- end ncMut protection ----
+	// ---- end ncMut protection ----
 
 	send sendBuffer
 	recv recvBuffer

@@ -17,7 +17,7 @@ type FlushWriter interface {
 type NetConn struct {
 	Writer FlushWriter
 	Closer io.Closer
-	Reader io.ReadCloser
+	Reader io.ReadCloser // TODO only need io.Reader
 }
 
 type connTimeout interface {
