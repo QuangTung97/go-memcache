@@ -1,7 +1,6 @@
 package memcache
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
@@ -116,11 +115,14 @@ func TestResponseReader_With_Value_Return(t *testing.T) {
 
 	r.recv([]byte("123456789\r\nVA"))
 
-	expected := "VA 13\r\nAA\r\n123456789\r\n"
+	expected := "VA 13\r\n"
 
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
 	assert.Equal(t, []byte(expected), cmd.responseData)
+	assert.Equal(t, [][]byte{
+		[]byte("AA\r\n123456789"),
+	}, cmd.responseBinaries)
 
 	cmd = newCommand()
 	r.setCurrentCommand(cmd)
@@ -132,11 +134,14 @@ func TestResponseReader_With_Value_Return(t *testing.T) {
 
 	r.recv([]byte("   4  \r\nabcd\r\n"))
 
-	expected = "VA   4  \r\nabcd\r\n"
+	expected = "VA   4  \r\n"
 
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
 	assert.Equal(t, []byte(expected), cmd.responseData)
+	assert.Equal(t, [][]byte{
+		[]byte("abcd"),
+	}, cmd.responseBinaries)
 }
 
 func TestResponseReader_With_VA_Error(t *testing.T) {
@@ -296,7 +301,10 @@ func TestResponseReader_VA_With_Options(t *testing.T) {
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
 	assert.Equal(t, nil, r.hasError())
-	assert.Equal(t, "VA 8 c123 X W\r\n12348888\r\n", string(cmd.responseData))
+	assert.Equal(t, "VA 8 c123 X W\r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("12348888"),
+	}, cmd.responseBinaries)
 }
 
 func TestResponseReader_Invalid_Reader_Usage(t *testing.T) {
@@ -370,7 +378,10 @@ func TestResponseReader_State_Find_First_Num__Content_Data_Disconnected(t *testi
 
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, "VA 3 \r\nabc\r\n", string(cmd.responseData))
+	assert.Equal(t, "VA 3 \r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("abc"),
+	}, cmd.responseBinaries)
 }
 
 func TestResponseReader_State_Get_Num__Content_Data_Disconnected(t *testing.T) {
@@ -389,7 +400,7 @@ func TestResponseReader_State_Get_Num__Content_Data_Disconnected(t *testing.T) {
 
 	ok = r.readNextData()
 	assert.Equal(t, false, ok)
-	assert.Equal(t, "VA 123 \r\nabc", string(cmd.responseData))
+	assert.Equal(t, "VA 123 \r\n", string(cmd.responseData))
 
 	data := strings.Repeat("8", 120)
 
@@ -398,7 +409,10 @@ func TestResponseReader_State_Get_Num__Content_Data_Disconnected(t *testing.T) {
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
 
-	assert.Equal(t, fmt.Sprintf("VA 123 \r\nabc%s\r\n", data), string(cmd.responseData))
+	assert.Equal(t, "VA 123 \r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("abc" + data),
+	}, cmd.responseBinaries)
 }
 
 func TestResponseReader_State_Find_First_CR_For_VA__Disconnected(t *testing.T) {
@@ -423,5 +437,8 @@ func TestResponseReader_State_Find_First_CR_For_VA__Disconnected(t *testing.T) {
 
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, "VA 3 \r\nabc\r\n", string(cmd.responseData))
+	assert.Equal(t, "VA 3 \r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("abc"),
+	}, cmd.responseBinaries)
 }

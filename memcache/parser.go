@@ -3,11 +3,16 @@ package memcache
 import "bytes"
 
 type parser struct {
-	data []byte
+	data     []byte
+	binaries [][]byte
 }
 
-func initParser(p *parser, data []byte) {
+func initParser(p *parser,
+	data []byte,
+	binaries [][]byte,
+) {
 	p.data = data
+	p.binaries = binaries
 }
 
 // MGetResponseType ...
@@ -200,7 +205,7 @@ func (p *parser) readMGetHD() (MGetResponse, error) {
 }
 
 func (p *parser) readMGetVA() (MGetResponse, error) {
-	num, index := findNumber(p.data, 3)
+	_, index := findNumber(p.data, 3)
 
 	resp := MGetResponse{
 		Type: MGetResponseTypeVA,
@@ -211,20 +216,15 @@ func (p *parser) readMGetVA() (MGetResponse, error) {
 		return MGetResponse{}, err
 	}
 
-	dataEnd := crlfIndex + int(num)
-	if dataEnd+2 > len(p.data) {
+	p.skipData(crlfIndex)
+
+	if len(p.binaries) == 0 {
 		return MGetResponse{}, ErrInvalidMGet
 	}
 
-	data := make([]byte, num)
-	copy(data, p.data[crlfIndex:dataEnd])
-	resp.Data = data
+	resp.Data = p.binaries[0]
+	p.binaries = p.binaries[1:]
 
-	if !p.pairEqual(dataEnd, '\r', '\n') {
-		return MGetResponse{}, ErrInvalidMGet
-	}
-
-	p.skipData(dataEnd + 2)
 	return resp, nil
 }
 

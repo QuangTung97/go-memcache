@@ -53,6 +53,8 @@ type commandData struct {
 	requestData  []byte
 	responseData []byte
 
+	responseBinaries [][]byte // mget binary responses
+
 	completed bool
 
 	epoch  uint64
@@ -66,8 +68,9 @@ type commandData struct {
 
 func newCommand() *commandData {
 	c := &commandData{
-		requestData:  requestBytesPool.get(),
-		responseData: responseBytesPool.get(),
+		requestData:      requestBytesPool.get(),
+		responseData:     responseBytesPool.get(),
+		responseBinaries: make([][]byte, 0, 16),
 	}
 	c.cond = sync.NewCond(&c.mut)
 	return c

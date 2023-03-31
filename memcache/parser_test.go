@@ -5,18 +5,24 @@ import (
 	"testing"
 )
 
-func newParserStr(s string) *parser {
+func newParserStr(s string, binaries ...string) *parser {
+	responseBinaries := make([][]byte, 0, len(binaries))
+	for _, e := range binaries {
+		responseBinaries = append(responseBinaries, []byte(e))
+	}
+
 	p := &parser{}
-	initParser(p, []byte(s))
+	initParser(p, []byte(s), responseBinaries)
 	return p
 }
 
 func TestParser_Read_MGet(t *testing.T) {
 	table := []struct {
-		name string
-		data string
-		err  error
-		resp MGetResponse
+		name     string
+		data     string
+		binaries []string
+		err      error
+		resp     MGetResponse
 	}{
 		{
 			name: "empty",
@@ -53,22 +59,19 @@ func TestParser_Read_MGet(t *testing.T) {
 			err:  ErrInvalidMGet,
 		},
 		{
-			name: "VA",
-			data: "VA 5\r\nAABBC\r\n",
+			name:     "VA",
+			data:     "VA 5\r\n",
+			binaries: []string{"AABBC"},
 			resp: MGetResponse{
 				Type: MGetResponseTypeVA,
 				Data: []byte("AABBC"),
 			},
 		},
 		{
-			name: "VA-missing-data-lf",
-			data: "VA 5\r\nAABBC\r",
-			err:  ErrInvalidMGet,
-		},
-		{
-			name: "VA-missing-wrong-lf",
-			data: "VA 5\r\nAABBC\r3",
-			err:  ErrInvalidMGet,
+			name:     "VA-missing-binaries",
+			data:     "VA 5\r\n",
+			binaries: nil,
+			err:      ErrInvalidMGet,
 		},
 		{
 			name: "VA-missing-va-lf",
@@ -130,8 +133,9 @@ func TestParser_Read_MGet(t *testing.T) {
 			},
 		},
 		{
-			name: "VA-with-X-Z",
-			data: "VA 3 c123 X Z\r\nXXX\r\n",
+			name:     "VA-with-X-Z",
+			data:     "VA 3 c123 X Z\r\n",
+			binaries: []string{"XXX"},
 			resp: MGetResponse{
 				Type:  MGetResponseTypeVA,
 				Flags: MGetFlagX | MGetFlagZ,
@@ -163,7 +167,7 @@ func TestParser_Read_MGet(t *testing.T) {
 
 	for _, e := range table {
 		t.Run(e.name, func(t *testing.T) {
-			p := newParserStr(e.data)
+			p := newParserStr(e.data, e.binaries...)
 			resp, err := p.readMGet()
 			assert.Equal(t, e.err, err)
 			assert.Equal(t, e.resp, resp)
@@ -319,7 +323,7 @@ func TestParser_Multi_MGet_EN_First(t *testing.T) {
 }
 
 func TestParser_Multi_MGet_VA_First(t *testing.T) {
-	p := newParserStr("VA 4 c55 W\r\nAAAA\r\nHD\r\n")
+	p := newParserStr("VA 4 c55 W\r\nHD\r\n", "AAAA")
 
 	resp, err := p.readMGet()
 	assert.Equal(t, nil, err)
@@ -353,7 +357,10 @@ func TestParser_Multi_MGet_Server_Error_First(t *testing.T) {
 }
 
 func TestParser_Multi_MGet_2_VA(t *testing.T) {
-	p := newParserStr("VA 3\r\n565\r\nVA 4 W c33\r\nXXXX\r\n")
+	p := newParserStr("VA 3\r\nVA 4 W c33\r\n",
+		"565",
+		"XXXX",
+	)
 
 	resp, err := p.readMGet()
 	assert.Equal(t, nil, err)

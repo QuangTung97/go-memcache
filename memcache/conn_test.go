@@ -65,11 +65,14 @@ func TestConn_Set_Get(t *testing.T) {
 
 	results := []string{
 		"HD\r\n",
-		"VA 4\r\nABCD\r\n",
+		"VA 4\r\n",
 		"OK\r\n",
 	}
 
 	assert.Equal(t, strings.Join(results, ""), string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("ABCD"),
+	}, cmd.responseBinaries)
 }
 
 func TestConn_Shutdown(t *testing.T) {

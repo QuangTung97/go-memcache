@@ -21,7 +21,10 @@ type responseReader struct {
 	state   readerState
 	tmpData []byte
 
-	dataLen uint64
+	dataLen       uint64
+	currentBinary []byte
+	currentIndex  int
+
 	lastErr error
 
 	remainingData []byte
@@ -127,6 +130,7 @@ func (r *responseReader) handleGetNum(data []byte) []byte {
 		}
 
 		r.dataLen += 2 // CR + LF
+		r.currentBinary = make([]byte, 0, r.dataLen)
 
 		r.state = readerStateFindCRForVA
 		return data[index:]
@@ -161,14 +165,19 @@ func (r *responseReader) handleBinaryData(data []byte) []byte {
 
 	r.dataLen -= n
 
+	r.currentBinary = append(r.currentBinary, data[:n]...)
+
 	if r.dataLen == 0 {
 		r.state = readerStateCompleted
-		r.writeResponse(data[:n])
+
+		r.currentBinary = r.currentBinary[:len(r.currentBinary)-2]
+		r.currentCmd.responseBinaries = append(r.currentCmd.responseBinaries, r.currentBinary)
+		r.currentBinary = nil
+
 		r.remainingData = data[n:]
 		return nil
 	}
 
-	r.writeResponse(data[:n])
 	return data[n:]
 }
 

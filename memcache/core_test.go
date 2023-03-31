@@ -111,6 +111,9 @@ func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_
 	cmd1.waitCompleted()
 	cmd2.waitCompleted()
 
-	assert.Equal(t, "VA 4\r\nABCD\r\n", string(cmd1.responseData))
+	assert.Equal(t, "VA 4\r\n", string(cmd1.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("ABCD"),
+	}, cmd1.responseBinaries)
 	assert.Equal(t, "HD\r\n", string(cmd2.responseData))
 }

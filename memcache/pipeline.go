@@ -70,7 +70,7 @@ func (c *Client) Pipeline() *Pipeline {
 
 func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 	var ps parser
-	initParser(&ps, currentCmd.responseData)
+	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
 
 	if currentCmd.lastErr != nil {
 		for _, cmd := range s.currentCmdList {
