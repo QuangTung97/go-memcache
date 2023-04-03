@@ -82,10 +82,13 @@ func (r *responseReader) handleStateInit(data []byte) []byte {
 	for index, c := range data {
 		if c == 'V' && index == 0 {
 			if len(data) >= respVAWithSpaceLen+1 {
-				if bytes.Equal(data[:respVAWithSpaceLen], respVAWithSpace) && isDigit(data[respVAWithSpaceLen]) {
-					r.writeResponse(data[:respVAWithSpaceLen])
+				ch := data[respVAWithSpaceLen]
+
+				if bytes.Equal(data[:respVAWithSpaceLen], respVAWithSpace) && isDigit(ch) {
+					r.resetTmpDataWithChar(ch)
 					r.state = readerStateGetNum
-					return r.handleGetNum(data[respVAWithSpaceLen:])
+					r.writeResponse(data[:respVAWithSpaceLen+1])
+					return r.handleGetNum(data[respVAWithSpaceLen+1:])
 				}
 			}
 
@@ -112,6 +115,11 @@ func (r *responseReader) handleFindA(data []byte) []byte {
 	return data
 }
 
+func (r *responseReader) resetTmpDataWithChar(c byte) {
+	r.tmpData = r.tmpData[:0]
+	r.tmpData = append(r.tmpData, c)
+}
+
 func (r *responseReader) handleFindFirstNum(data []byte) []byte {
 	for index, c := range data {
 		if c == ' ' {
@@ -119,8 +127,7 @@ func (r *responseReader) handleFindFirstNum(data []byte) []byte {
 		}
 
 		if c >= '0' && c <= '9' {
-			r.tmpData = r.tmpData[:0]
-			r.tmpData = append(r.tmpData, c)
+			r.resetTmpDataWithChar(c)
 			r.state = readerStateGetNum
 			r.writeResponse(data[:index+1])
 			return data[index+1:]

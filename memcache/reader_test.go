@@ -144,6 +144,54 @@ func TestResponseReader_With_Value_Return(t *testing.T) {
 	}, cmd.responseBinaries)
 }
 
+func TestResponseReader_With_Single_Digit(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv([]byte("VA 3\r\nAAC\r\n"))
+
+	ok := r.readNextData()
+	assert.Equal(t, true, ok)
+
+	expected := "VA 3\r\n"
+
+	assert.Equal(t, []byte(expected), cmd.responseData)
+	assert.Equal(t, [][]byte{
+		[]byte("AAC"),
+	}, cmd.responseBinaries)
+}
+
+func TestResponseReader_With_Single_Digit__Two_Responses(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv([]byte("VA 3\r\nAAC\r\nVA 4\r\nKKKK\r\n"))
+
+	ok := r.readNextData()
+	assert.Equal(t, true, ok)
+
+	expected := "VA 3\r\n"
+	assert.Equal(t, []byte(expected), cmd.responseData)
+	assert.Equal(t, [][]byte{
+		[]byte("AAC"),
+	}, cmd.responseBinaries)
+
+	// read again
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	expected = "VA 3\r\nVA 4\r\n"
+	assert.Equal(t, expected, string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("AAC"),
+		[]byte("KKKK"),
+	}, cmd.responseBinaries)
+}
+
 func TestResponseReader_With_VA_Error(t *testing.T) {
 	r := newResponseReader()
 
