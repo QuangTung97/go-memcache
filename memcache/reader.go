@@ -201,8 +201,10 @@ func (r *responseReader) handleBinaryData(data []byte) []byte {
 
 	r.dataLen -= n
 
-	copy(r.currentBinary[r.currentIndex:], data)
-	r.currentIndex += int(n)
+	if r.currentIndex < len(r.currentBinary) {
+		copy(r.currentBinary[r.currentIndex:], data)
+		r.currentIndex += int(n)
+	}
 
 	if r.dataLen == 0 {
 		r.state = readerStateCompleted

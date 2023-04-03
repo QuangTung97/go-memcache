@@ -192,6 +192,30 @@ func TestResponseReader_With_Single_Digit__Two_Responses(t *testing.T) {
 	}, cmd.responseBinaries)
 }
 
+func TestResponseReader_With_Data_CR_And_LF_Discontinued(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv([]byte("VA 3\r\nAAC\r"))
+
+	ok := r.readNextData()
+	assert.Equal(t, false, ok)
+
+	r.recv([]byte("\n"))
+
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	expected := "VA 3\r\n"
+
+	assert.Equal(t, []byte(expected), cmd.responseData)
+	assert.Equal(t, [][]byte{
+		[]byte("AAC"),
+	}, cmd.responseBinaries)
+}
+
 func TestResponseReader_With_VA_Error(t *testing.T) {
 	r := newResponseReader()
 
