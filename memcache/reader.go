@@ -1,5 +1,9 @@
 package memcache
 
+import (
+	"bytes"
+)
+
 type readerState int
 
 const (
@@ -40,8 +44,6 @@ func newResponseReader() *responseReader {
 
 var errNoLFAfterCR = ErrBrokenPipe{reason: "no LF after CR"}
 
-var errInvalidVA = ErrBrokenPipe{reason: "no A after V"}
-
 var errNotNumberAfterVA = ErrBrokenPipe{reason: "not a number after VA"}
 
 func (r *responseReader) writeResponse(data []byte) {
@@ -72,12 +74,28 @@ func (r *responseReader) simpleContinue(data []byte) []byte {
 	return nil
 }
 
+var respVAWithSpace = []byte("VA ")
+var respVAWithSpaceLen = len(respVAWithSpace)
+
+//revive:disable-next-line:cognitive-complexity
 func (r *responseReader) handleStateInit(data []byte) []byte {
 	for index, c := range data {
 		if c == 'V' && index == 0 {
+			if len(data) >= respVAWithSpaceLen+1 {
+				if bytes.Equal(data[:respVAWithSpaceLen], respVAWithSpace) && isDigit(data[respVAWithSpaceLen]) {
+					r.writeResponse(data[:respVAWithSpaceLen])
+					r.state = readerStateGetNum
+					return r.handleGetNum(data[respVAWithSpaceLen:])
+				}
+			}
+
 			return r.processedSingleChar(data, index, readerStateFindA)
 		}
 		if c == '\r' {
+			n := len(data)
+			if index < n-1 && data[index+1] == '\n' {
+				return r.setCompleted(data, index+2)
+			}
 			return r.processedSingleChar(data, index, readerStateFindLF)
 		}
 	}
@@ -90,7 +108,8 @@ func (r *responseReader) handleFindA(data []byte) []byte {
 		r.writeResponse(data[:1])
 		return data[1:]
 	}
-	return r.setErrorAndReturn(errInvalidVA)
+	r.state = readerStateInit
+	return data
 }
 
 func (r *responseReader) handleFindFirstNum(data []byte) []byte {
@@ -144,6 +163,14 @@ func (r *responseReader) handleGetNum(data []byte) []byte {
 func (r *responseReader) handleFindCRForVA(data []byte) []byte {
 	for index, c := range data {
 		if c == '\r' {
+			n := len(data)
+
+			if index < n-1 && data[index+1] == '\n' {
+				r.state = readerStateReadBinaryData
+				r.writeResponse(data[:index+2])
+				return r.handleBinaryData(data[index+2:])
+			}
+
 			return r.processedSingleChar(data, index, readerStateFindLFForVA)
 		}
 	}

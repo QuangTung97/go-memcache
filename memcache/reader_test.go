@@ -256,7 +256,9 @@ func TestResponseReader_No_A_After_V(t *testing.T) {
 
 	ok := r.readNextData()
 	assert.Equal(t, true, ok)
-	assert.Equal(t, errInvalidVA, r.hasError())
+	assert.Equal(t, nil, r.hasError())
+	assert.Equal(t, "VB 12\r\n", string(cmd.responseData))
+	assert.Equal(t, 0, len(cmd.responseBinaries))
 }
 
 func TestResponseReader_No_LF_After_CR(t *testing.T) {
@@ -354,6 +356,34 @@ func TestResponseReader_State_Init__Content_Data_Disconnected(t *testing.T) {
 	ok = r.readNextData()
 	assert.Equal(t, true, ok)
 	assert.Equal(t, "HD W c123 \r\n", string(cmd.responseData))
+}
+
+func TestResponseReader_State_Find_A_Content_Data_Disconnected(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv([]byte("V"))
+
+	ok := r.readNextData()
+	assert.Equal(t, false, ok)
+	assert.Equal(t, "V", string(cmd.responseData))
+
+	r.recv([]byte("A  3 \r\n"))
+
+	ok = r.readNextData()
+	assert.Equal(t, false, ok)
+	assert.Equal(t, "VA  3 \r\n", string(cmd.responseData))
+
+	r.recv([]byte("abc\r\n"))
+
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+	assert.Equal(t, "VA  3 \r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte{
+		[]byte("abc"),
+	}, cmd.responseBinaries)
 }
 
 func TestResponseReader_State_Find_First_Num__Content_Data_Disconnected(t *testing.T) {
