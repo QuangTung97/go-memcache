@@ -20,6 +20,8 @@ type propertyTest struct {
 	totalSetSuccess atomic.Uint64
 	totalServerErr  atomic.Uint64
 
+	totalDelete atomic.Uint64
+
 	client *memcache.Client
 }
 
@@ -140,6 +142,12 @@ func (p *propertyTest) doSet(r *rand.Rand) {
 	}
 }
 
+func (p *propertyTest) doDelete(r *rand.Rand) {
+	for i := 0; i < numLoops; i++ {
+		p.doDeleteSingleLoop(r)
+	}
+}
+
 func (p *propertyTest) doSetSingleLoop(r *rand.Rand) {
 	n := randInt(r, 1, 10)
 
@@ -168,6 +176,32 @@ func (p *propertyTest) doSetSingleLoop(r *rand.Rand) {
 			fmt.Println("SERVER ERROR:", serverErr.Message)
 
 			p.totalServerErr.Add(1)
+			continue
+		}
+
+		panic(err)
+	}
+}
+
+func (p *propertyTest) doDeleteSingleLoop(r *rand.Rand) {
+	n := randInt(r, 1, 4)
+
+	pipe := p.client.Pipeline()
+	defer pipe.Finish()
+
+	fnList := make([]func() (memcache.MDelResponse, error), 0, n)
+
+	for i := 0; i < n; i++ {
+		k := randomKey(r)
+
+		fn := pipe.MDel(k, memcache.MDelOptions{})
+		fnList = append(fnList, fn)
+	}
+
+	for _, fn := range fnList {
+		_, err := fn()
+		if err == nil {
+			p.totalDelete.Add(1)
 			continue
 		}
 
@@ -213,6 +247,7 @@ func TestPropertyBased(t *testing.T) {
 	for th := 0; th < deleteThreads; th++ {
 		go func() {
 			defer wg.Done()
+			p.doDelete(newRand())
 		}()
 	}
 
@@ -222,4 +257,5 @@ func TestPropertyBased(t *testing.T) {
 	fmt.Println("TOTAL NOT FOUND:", p.totalNotFound.Load())
 	fmt.Println("TOTAL SET SUCCESS:", p.totalSetSuccess.Load())
 	fmt.Println("TOTAL SERVER ERROR:", p.totalServerErr.Load())
+	fmt.Println("TOTAL DELETE:", p.totalDelete.Load())
 }

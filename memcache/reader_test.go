@@ -567,6 +567,7 @@ func TestResponseReader_State_Find_First_CR_For_VA__Disconnected(t *testing.T) {
 	}, cmd.responseBinaries)
 }
 
+//revive:disable-next-line:cognitive-complexity
 func TestResponseReader_Random_Disconnected(t *testing.T) {
 	seed := time.Now().UnixNano()
 	fmt.Println("SEED:", seed)
