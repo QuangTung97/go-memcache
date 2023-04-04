@@ -102,7 +102,7 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 		}
 
 		if cmd.err != nil {
-			if IsServerErrorMsg(cmd.err, ObjectTooBigErrorMsg) {
+			if IsServerError(cmd.err) {
 				continue
 			}
 			s.pipeline.c.core.sender.setNetConnError(cmd.err, currentCmd.reader)

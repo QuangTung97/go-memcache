@@ -17,15 +17,12 @@ func TestClientError(t *testing.T) {
 }
 
 func TestIsErrorMessage(t *testing.T) {
-	b := IsServerErrorMsg(nil, "")
+	b := IsServerError(nil)
 	assert.Equal(t, false, b)
 
-	b = IsServerErrorMsg(errors.New("new error"), "")
+	b = IsServerError(errors.New("new error"))
 	assert.Equal(t, false, b)
 
-	b = IsServerErrorMsg(NewServerError("some error"), "some error")
+	b = IsServerError(NewServerError("some error"))
 	assert.Equal(t, true, b)
-
-	b = IsServerErrorMsg(NewServerError("some error"), "another error")
-	assert.Equal(t, false, b)
 }

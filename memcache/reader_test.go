@@ -216,6 +216,25 @@ func TestResponseReader_With_Data_CR_And_LF_Discontinued(t *testing.T) {
 	}, cmd.responseBinaries)
 }
 
+func TestResponseReader_With_Data_Zero(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv([]byte("VA 0\r\n\r\n"))
+
+	ok := r.readNextData()
+	assert.Equal(t, true, ok)
+
+	expected := "VA 0\r\n"
+
+	assert.Equal(t, []byte(expected), cmd.responseData)
+	assert.Equal(t, [][]byte{
+		[]byte(""),
+	}, cmd.responseBinaries)
+}
+
 func TestResponseReader_With_VA_Error(t *testing.T) {
 	r := newResponseReader()
 
