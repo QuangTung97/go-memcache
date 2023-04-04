@@ -1,9 +1,12 @@
 package memcache
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"math/rand"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResponseReader_Empty(t *testing.T) {
@@ -561,5 +564,99 @@ func TestResponseReader_State_Find_First_CR_For_VA__Disconnected(t *testing.T) {
 	assert.Equal(t, "VA 3 \r\n", string(cmd.responseData))
 	assert.Equal(t, [][]byte{
 		[]byte("abc"),
+	}, cmd.responseBinaries)
+}
+
+func TestResponseReader_Random_Disconnected(t *testing.T) {
+	seed := time.Now().UnixNano()
+	fmt.Println("SEED:", seed)
+	rand.Seed(seed)
+
+	for i := 0; i < 10000; i++ {
+		r := newResponseReader()
+
+		cmd := newCommand()
+		r.setCurrentCommand(cmd)
+
+		resp := "VA 3\r\nABC\r\nSTORED\r\nVA 4 c123\r\n1234\r\nEN\r\n"
+
+		splitIndex := rand.Intn(len(resp))
+		first := resp[:splitIndex]
+		second := resp[splitIndex:]
+
+		recvTimes := 0
+		cmdCount := 0
+
+	Outer:
+		for cmdCount < 4 {
+			for {
+				ok := r.readNextData()
+				if ok {
+					cmdCount++
+					continue Outer
+				}
+
+				if recvTimes == 0 {
+					r.recv([]byte(first))
+				} else if recvTimes == 1 {
+					r.recv([]byte(second))
+				} else {
+					panic("Invalid rec times")
+				}
+				recvTimes++
+			}
+		}
+
+		expected := "VA 3\r\nSTORED\r\nVA 4 c123\r\nEN\r\n"
+		assert.Equal(t, expected, string(cmd.responseData))
+
+		if expected != string(cmd.responseData) {
+			fmt.Println(splitIndex)
+		}
+
+		assert.Equal(t, [][]byte{
+			[]byte("ABC"),
+			[]byte("1234"),
+		}, cmd.responseBinaries)
+	}
+}
+
+func TestResponseReader_Fix_Bug_Loop_Infinite_On_ReadNextData(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	first := "VA 3\r\nABC\r\nS"
+	second := "TORED\r\nVA 4 c123\r\n1234\r\nEN\r\n"
+
+	r.recv([]byte(first))
+
+	ok := r.readNextData()
+	assert.Equal(t, true, ok)
+
+	ok = r.readNextData()
+	assert.Equal(t, false, ok)
+
+	r.recv([]byte(second))
+
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	ok = r.readNextData()
+	assert.Equal(t, false, ok)
+
+	expected := "VA 3\r\nSTORED\r\nVA 4 c123\r\nEN\r\n"
+	assert.Equal(t, expected, string(cmd.responseData))
+
+	assert.Equal(t, [][]byte{
+		[]byte("ABC"),
+		[]byte("1234"),
 	}, cmd.responseBinaries)
 }

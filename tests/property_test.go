@@ -47,7 +47,7 @@ func randInt(r *rand.Rand, a, b int) int {
 	return r.Intn(b-a+1) + a
 }
 
-const numLoops = 3000
+const numLoops = 80000
 const keySpace = 789
 
 func randomKey(r *rand.Rand) string {

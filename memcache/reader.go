@@ -272,7 +272,9 @@ func (r *responseReader) readNextData() bool {
 		}
 
 		if r.state == readerStateInit && len(r.remainingData) > 0 {
-			r.recv(r.remainingData)
+			remaining := r.remainingData
+			r.remainingData = nil
+			r.recv(remaining)
 			continue
 		}
 
