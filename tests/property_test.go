@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"hash/crc32"
+	"math"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,8 @@ type propertyTest struct {
 	totalServerErr  atomic.Uint64
 
 	totalDelete atomic.Uint64
+
+	serverErrors *sync.Map
 
 	client *memcache.Client
 }
@@ -41,7 +44,8 @@ func newPropertyTest(t *testing.T) *propertyTest {
 	}
 
 	return &propertyTest{
-		client: client,
+		client:       client,
+		serverErrors: &sync.Map{},
 	}
 }
 
@@ -49,7 +53,7 @@ func randInt(r *rand.Rand, a, b int) int {
 	return r.Intn(b-a+1) + a
 }
 
-const numLoops = 10000
+const numLoops = 5000
 const keySpace = 789
 
 func randomKey(r *rand.Rand) string {
@@ -59,7 +63,9 @@ func randomKey(r *rand.Rand) string {
 
 func randomValue(r *rand.Rand, key string) []byte {
 	keyEnd := 4 + len(key)
-	n := randInt(r, keyEnd, 1<<10)
+
+	lenLog := 6 + math.Sqrt(r.Float64()*14.1*14.1)
+	n := int(math.Pow(2.0, lenLog))
 
 	data := make([]byte, n)
 
@@ -173,7 +179,7 @@ func (p *propertyTest) doSetSingleLoop(r *rand.Rand) {
 
 		if memcache.IsServerError(err) {
 			serverErr := err.(memcache.ErrServerError)
-			fmt.Println("SERVER ERROR:", serverErr.Message)
+			p.serverErrors.Store(serverErr.Message, true)
 
 			p.totalServerErr.Add(1)
 			continue
@@ -258,4 +264,9 @@ func TestPropertyBased(t *testing.T) {
 	fmt.Println("TOTAL SET SUCCESS:", p.totalSetSuccess.Load())
 	fmt.Println("TOTAL SERVER ERROR:", p.totalServerErr.Load())
 	fmt.Println("TOTAL DELETE:", p.totalDelete.Load())
+
+	p.serverErrors.Range(func(key, value any) bool {
+		fmt.Println("SERVER ERROR:", key, value)
+		return true
+	})
 }
