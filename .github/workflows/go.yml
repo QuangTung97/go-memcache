@@ -9,9 +9,11 @@ jobs:
     runs-on: ubuntu-20.04
     services:
       memcached:
-        image: memcached:1.6.18
+        image: bitnami/memcached:1.6.18
         ports:
           - 11211:11211
+        env:
+          MEMCACHED_CACHE_SIZE: 256
       memcached_auth:
         image: quangtung97/memcached:1.6.18
         ports:

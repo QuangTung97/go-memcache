@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -225,32 +224,6 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 
 	assert.Equal(t, "ms key01 13\r\nsome value 01\r\n", string(recorder1.data))
 	assert.Equal(t, "ms key02 13\r\nsome value 02\r\n", string(recorder2.data))
-}
-
-func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
-	t.Skip()
-
-	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
-		return net.Dial(network, address)
-	}
-	c, err := New("localhost:11211", 1, WithDialFunc(dialFunc))
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	for i := 0; i < 100; i++ {
-		now := time.Now()
-		resp, err := p.MSet("key01", []byte("some value 01"), MSetOptions{})()
-		fmt.Println("DURATION:", time.Since(now))
-		if err != nil {
-			fmt.Println(reflect.TypeOf(err))
-			fmt.Println(err)
-		}
-		fmt.Println(resp)
-		time.Sleep(1 * time.Second)
-	}
 }
 
 //revive:disable-next-line:cognitive-complexity
