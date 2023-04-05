@@ -96,6 +96,8 @@ func (c *coreConnection) recvSingleCommandData() error {
 		}
 	}
 
+	c.responseReader.setCurrentCommand(nil)
+
 	return nil
 }
 
