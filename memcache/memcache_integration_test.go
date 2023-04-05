@@ -227,48 +227,6 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 	assert.Equal(t, "ms key02 13\r\nsome value 02\r\n", string(recorder2.data))
 }
 
-func TestClient_Retry_On_TCP_Conn_Close__Error_EOF(t *testing.T) {
-	for i := 0; i < 1000; i++ {
-		doTestClientRetryOnTCPConnCloseErrorEOF(t)
-	}
-}
-
-func doTestClientRetryOnTCPConnCloseErrorEOF(t *testing.T) {
-	var recorder *connRecorder
-	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
-		conn, err := net.Dial(network, address)
-		if err != nil {
-			panic(err)
-		}
-		recorder = &connRecorder{
-			Conn: conn,
-		}
-		return recorder, nil
-	}
-
-	c, err := New("localhost:11211", 1, WithDialFunc(dialFunc), WithDialErrorLogger(func(err error) {
-		fmt.Println("CONNECTION ERROR:", err)
-	}))
-	assert.Equal(t, nil, err)
-	defer func() { _ = c.Close() }()
-
-	p := c.Pipeline()
-	defer p.Finish()
-
-	err = p.FlushAll()()
-	assert.Equal(t, nil, err)
-
-	resp, err := p.MSet("key01", []byte("some value 01"), MSetOptions{})()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, resp)
-
-	recorder.writeErr = io.EOF
-
-	resp, err = p.MSet("key01", []byte("some value 02"), MSetOptions{})()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, resp)
-}
-
 func TestClient_Retry_On_TCP_Conn_Close__Try(t *testing.T) {
 	t.Skip()
 

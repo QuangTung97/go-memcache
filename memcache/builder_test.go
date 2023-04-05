@@ -34,7 +34,7 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 	assert.Equal(t, 1, b.getCmd().cmdCount)
 	assert.Equal(t, "mg some:key c N13 v\r\n", string(b.getCmd().requestData))
 
-	freeCommandData(b.getCmd())
+	freeCommandResponseData(b.getCmd())
 
 	// New Command Builder
 

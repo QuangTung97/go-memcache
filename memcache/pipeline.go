@@ -2,9 +2,6 @@ package memcache
 
 import (
 	"errors"
-	"io"
-	"net"
-	"os"
 	"unicode"
 	"unsafe"
 )
@@ -69,7 +66,7 @@ func (c *Client) Pipeline() *Pipeline {
 	return p
 }
 
-func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
+func (s *pipelineSession) parseCommands(currentCmd *commandData) {
 	var ps parser
 	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
 
@@ -77,7 +74,7 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 		for _, cmd := range s.currentCmdList {
 			cmd.err = currentCmd.lastErr
 		}
-		return currentCmd.lastErr
+		return
 	}
 
 	for _, cmd := range s.currentCmdList {
@@ -108,36 +105,6 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) error {
 			s.pipeline.c.core.sender.setNetConnError(cmd.err, currentCmd.reader)
 		}
 	}
-
-	return nil
-}
-
-func (s *pipelineSession) doRetryForError(currentCmd *commandData, err error) {
-	if err == nil {
-		return
-	}
-
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		return
-	}
-
-	var netErr *net.OpError
-	if err != io.EOF && !errors.As(err, &netErr) {
-		return
-	}
-
-	// Do Retry
-	err = s.pipeline.c.core.sender.waitForNewEpoch(currentCmd.epoch)
-	if err != nil {
-		return
-	}
-
-	retryCmd := currentCmd.cloneShareRequest()
-
-	s.pushCommands(retryCmd)
-	retryCmd.waitCompleted()
-
-	_ = s.parseCommands(retryCmd)
 }
 
 func (s *pipelineSession) waitAndParseCmdData() {
@@ -150,11 +117,10 @@ func (s *pipelineSession) waitAndParseCmdData() {
 	currentCmd := s.builder.getCmd()
 	currentCmd.waitCompleted()
 
-	err := s.parseCommands(currentCmd)
-	s.doRetryForError(currentCmd, err)
+	s.parseCommands(currentCmd)
 
 	// clear currentCmdList
-	freeCommandData(currentCmd)
+	freeCommandResponseData(currentCmd)
 }
 
 func (p *Pipeline) resetPipelineSession() {

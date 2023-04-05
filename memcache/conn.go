@@ -40,7 +40,6 @@ func newConn(addr string, options ...Option) *clientConn {
 	go func() {
 		defer c.wg.Done()
 
-		retryErrorCount := 0
 		for {
 			c.core.waitForError()
 			if c.core.isShuttingDown() {
@@ -51,17 +50,11 @@ func newConn(addr string, options ...Option) *clientConn {
 			if err != nil {
 				opts.dialErrorLogger(err)
 
-				if retryErrorCount == 0 {
-					c.core.sender.increaseEpochAndSetError(err)
-				}
-				retryErrorCount++
-
 				sleepWithCloseChan(opts.retryDuration, c.closeChan)
 				continue
 			}
 
 			c.core.resetNetConn(nc)
-			retryErrorCount = 0
 			continue
 		}
 	}()
