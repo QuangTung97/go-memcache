@@ -64,7 +64,10 @@ func randomKey(r *rand.Rand) string {
 func randomValue(r *rand.Rand, key string) []byte {
 	keyEnd := 4 + len(key)
 
-	lenLog := 6 + math.Sqrt(r.Float64()*14.1*14.1)
+	pow := 5.0
+	ratio := math.Pow(14.01, 1.0/pow)
+	lenLog := 6 + math.Pow(r.Float64()*ratio, pow)
+
 	n := int(math.Pow(2.0, lenLog))
 
 	data := make([]byte, n)
