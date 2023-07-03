@@ -8,6 +8,7 @@ type readerState int
 
 const (
 	readerStateInit readerState = iota + 1
+	readerStateSimpleCommand
 	readerStateCompleted
 	readerStateFindLF
 
@@ -77,26 +78,34 @@ func (r *responseReader) simpleContinue(data []byte) []byte {
 var respVAWithSpace = []byte("VA ")
 var respVAWithSpaceLen = len(respVAWithSpace)
 
-//revive:disable-next-line:cognitive-complexity
-func (r *responseReader) handleStateInit(data []byte) []byte {
-	for index, c := range data {
-		if c == 'V' && index == 0 {
-			if len(data) >= respVAWithSpaceLen+1 {
-				ch := data[respVAWithSpaceLen]
+func (r *responseReader) handleStartWithV(data []byte) []byte {
+	if len(data) >= respVAWithSpaceLen+1 {
+		ch := data[respVAWithSpaceLen]
 
-				if bytes.Equal(data[:respVAWithSpaceLen], respVAWithSpace) && isDigit(ch) {
-					r.resetTmpDataWithChar(ch)
-					r.state = readerStateGetNum
-					r.writeResponse(data[:respVAWithSpaceLen+1])
-					return r.handleGetNum(data[respVAWithSpaceLen+1:])
-				}
-			}
-
-			return r.processedSingleChar(data, index, readerStateFindA)
+		if bytes.Equal(data[:respVAWithSpaceLen], respVAWithSpace) && isDigit(ch) {
+			r.resetTmpDataWithChar(ch)
+			r.state = readerStateGetNum
+			r.writeResponse(data[:respVAWithSpaceLen+1])
+			return r.handleGetNum(data[respVAWithSpaceLen+1:])
 		}
+	}
+
+	return r.processedSingleChar(data, 0, readerStateFindA)
+}
+
+func (r *responseReader) handleStateInit(data []byte) []byte {
+	if data[0] == 'V' {
+		return r.handleStartWithV(data)
+	}
+	r.state = readerStateSimpleCommand
+	return r.handleStateSimpleCommand(data)
+}
+
+func (r *responseReader) handleStateSimpleCommand(data []byte) []byte {
+	for index, c := range data {
 		if c == '\r' {
 			n := len(data)
-			if index < n-1 && data[index+1] == '\n' {
+			if index+1 < n && data[index+1] == '\n' {
 				return r.setCompleted(data, index+2)
 			}
 			return r.processedSingleChar(data, index, readerStateFindLF)
@@ -111,7 +120,7 @@ func (r *responseReader) handleFindA(data []byte) []byte {
 		r.writeResponse(data[:1])
 		return data[1:]
 	}
-	r.state = readerStateInit
+	r.state = readerStateSimpleCommand
 	return data
 }
 
@@ -223,6 +232,9 @@ func (r *responseReader) recvInLoop(data []byte) []byte {
 	switch r.state {
 	case readerStateInit:
 		return r.handleStateInit(data)
+
+	case readerStateSimpleCommand:
+		return r.handleStateSimpleCommand(data)
 
 	case readerStateFindA:
 		return r.handleFindA(data)

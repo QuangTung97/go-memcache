@@ -416,6 +416,44 @@ func TestResponseReader_Invalid_Reader_Usage(t *testing.T) {
 	})
 }
 
+func TestResponseReader_With_Empty(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv(nil)
+	ok := r.readNextData()
+	assert.Equal(t, false, ok)
+
+	r.recv([]byte("HD W\r\n"))
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	assert.Equal(t, nil, r.hasError())
+	assert.Equal(t, "HD W\r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte(nil), cmd.responseBinaries)
+}
+
+func TestResponseReader_With_VA_Inside_Simple_Response(t *testing.T) {
+	r := newResponseReader()
+
+	cmd := newCommand()
+	r.setCurrentCommand(cmd)
+
+	r.recv([]byte("HD "))
+	ok := r.readNextData()
+	assert.Equal(t, false, ok)
+
+	r.recv([]byte("VA\r\n"))
+	ok = r.readNextData()
+	assert.Equal(t, true, ok)
+
+	assert.Equal(t, nil, r.hasError())
+	assert.Equal(t, "HD VA\r\n", string(cmd.responseData))
+	assert.Equal(t, [][]byte(nil), cmd.responseBinaries)
+}
+
 func TestResponseReader_Multi_Responses(t *testing.T) {
 	r := newResponseReader()
 
@@ -660,4 +698,42 @@ func TestResponseReader_Fix_Bug_Loop_Infinite_On_ReadNextData(t *testing.T) {
 		[]byte("ABC"),
 		[]byte("1234"),
 	}, cmd.responseBinaries)
+}
+
+func readAllFromReader(r *responseReader, data [][]byte) {
+	for {
+		ok := r.readNextData()
+		if ok {
+			continue
+		}
+
+		if len(data) == 0 {
+			return
+		}
+		r.recv(data[0])
+		data = data[1:]
+	}
+}
+
+func TestResponseReader_Split_At_Arbitrary_Point(t *testing.T) {
+	fullCmd := "HD 123 VA\r\nVA 3 XWVA\r\nVA1\r\nEN XVA\r\nVA 4  \r\nabVA\r\n"
+
+	for i := range fullCmd {
+		r := newResponseReader()
+		cmd := newCommand()
+		r.setCurrentCommand(cmd)
+
+		first := []byte(fullCmd[:i])
+		second := []byte(fullCmd[i:])
+
+		readAllFromReader(r, [][]byte{first, second})
+
+		// Check error and response data
+		assert.Equal(t, nil, r.hasError())
+		assert.Equal(t, "HD 123 VA\r\nVA 3 XWVA\r\nEN XVA\r\nVA 4  \r\n", string(cmd.responseData))
+		assert.Equal(t, [][]byte{
+			[]byte("VA1"),
+			[]byte("abVA"),
+		}, cmd.responseBinaries)
+	}
 }
