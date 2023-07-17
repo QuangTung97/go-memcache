@@ -36,7 +36,10 @@ func TestBuilder_AddMGet_And_MSet_Multi_Times(t *testing.T) {
 	b.addMSet("key03", []byte("data01"), MSetOptions{})
 
 	assert.Equal(t, 3, b.getCmd().cmdCount)
-	assert.Equal(t, "mg some:key01 N13 v\r\nmg some:key02 N14 v\r\nms key03 6\r\ndata01\r\n", string(b.getCmd().requestData))
+	assert.Equal(t,
+		"mg some:key01 N13 v\r\nmg some:key02 N14 v\r\nms key03 6\r\ndata01\r\n",
+		string(b.getCmd().requestData),
+	)
 	assert.Equal(t, 2, b.getMgetCount())
 
 	initCmdBuilder(b)
