@@ -147,7 +147,7 @@ func (s *pipelineSession) pushCommandsIfNotPublished() {
 		s.published = true
 
 		builderCmd := s.builder.getCmd()
-		builderCmd.responseBinaries = make([][]byte, 0, builderCmd.cmdCount)
+		builderCmd.responseBinaries = make([][]byte, 0, s.builder.getMgetCount())
 		s.pushCommands(builderCmd)
 	}
 }

@@ -17,6 +17,7 @@ func TestBuilder_AddMGet(t *testing.T) {
 
 	assert.Equal(t, 1, b.getCmd().cmdCount)
 	assert.Equal(t, "mg some:key v\r\n", string(b.getCmd().requestData))
+	assert.Equal(t, 1, b.getMgetCount())
 }
 
 func TestBuilder_AddMGet_With_N(t *testing.T) {
@@ -25,6 +26,21 @@ func TestBuilder_AddMGet_With_N(t *testing.T) {
 
 	assert.Equal(t, 1, b.getCmd().cmdCount)
 	assert.Equal(t, "mg some:key N13 v\r\n", string(b.getCmd().requestData))
+	assert.Equal(t, 1, b.getMgetCount())
+}
+
+func TestBuilder_AddMGet_And_MSet_Multi_Times(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMGet("some:key01", MGetOptions{N: 13})
+	b.addMGet("some:key02", MGetOptions{N: 14})
+	b.addMSet("key03", []byte("data01"), MSetOptions{})
+
+	assert.Equal(t, 3, b.getCmd().cmdCount)
+	assert.Equal(t, "mg some:key01 N13 v\r\nmg some:key02 N14 v\r\nms key03 6\r\ndata01\r\n", string(b.getCmd().requestData))
+	assert.Equal(t, 2, b.getMgetCount())
+
+	initCmdBuilder(b)
+	assert.Equal(t, 0, b.getMgetCount())
 }
 
 func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
@@ -33,6 +49,7 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 
 	assert.Equal(t, 1, b.getCmd().cmdCount)
 	assert.Equal(t, "mg some:key c N13 v\r\n", string(b.getCmd().requestData))
+	assert.Equal(t, 1, b.getMgetCount())
 
 	freeCommandResponseData(b.getCmd())
 
@@ -43,6 +60,7 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 
 	assert.Equal(t, 1, b.getCmd().cmdCount)
 	assert.Equal(t, "mg some:key c N13 v\r\n", string(b.getCmd().requestData))
+	assert.Equal(t, 1, b.getMgetCount())
 }
 
 func TestBuilder_AddMSet(t *testing.T) {

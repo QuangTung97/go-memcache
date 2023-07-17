@@ -1,7 +1,8 @@
 package memcache
 
 type cmdBuilder struct {
-	cmd *commandData
+	cmd       *commandData
+	mgetCount int
 }
 
 // MGetOptions ...
@@ -25,6 +26,7 @@ type MDelOptions struct {
 
 func initCmdBuilder(b *cmdBuilder) {
 	b.cmd = newCommand()
+	b.mgetCount = 0
 }
 
 func appendNumber(data []byte, n uint64) []byte {
@@ -51,6 +53,7 @@ func appendNumber(data []byte, n uint64) []byte {
 }
 
 func (b *cmdBuilder) addMGet(key string, opts MGetOptions) {
+	b.mgetCount++
 	b.cmd.cmdCount++
 
 	b.cmd.requestData = append(b.cmd.requestData, "mg "...)
@@ -121,4 +124,8 @@ func (b *cmdBuilder) addFlushAll() {
 
 func (b *cmdBuilder) getCmd() *commandData {
 	return b.cmd
+}
+
+func (b *cmdBuilder) getMgetCount() int {
+	return b.mgetCount
 }

@@ -84,6 +84,9 @@ func newCommand() *commandData {
 func freeCommandResponseData(cmd *commandData) {
 	responseBytesPool.put(cmd.responseData)
 	cmd.responseData = nil
+	for i := range cmd.responseBinaries {
+		cmd.responseBinaries[i] = nil
+	}
 }
 
 func freeCommandRequestData(cmd *commandData) {
