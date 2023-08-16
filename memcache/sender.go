@@ -87,6 +87,7 @@ func freeCommandResponseData(cmd *commandData) {
 	for i := range cmd.responseBinaries {
 		cmd.responseBinaries[i] = nil
 	}
+	cmd.responseBinaries = nil
 }
 
 func freeCommandRequestData(cmd *commandData) {
