@@ -121,6 +121,7 @@ func (s *pipelineSession) waitAndParseCmdData() {
 
 	// clear currentCmdList
 	freeCommandResponseData(currentCmd)
+	s.builder.clearCmd()
 }
 
 func (p *Pipeline) resetPipelineSession() {

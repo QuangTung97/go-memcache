@@ -165,3 +165,16 @@ func Benchmark_AddMGet(b *testing.B) {
 		builder.cmd.requestData = builder.cmd.requestData[:0]
 	}
 }
+
+func TestBuilder_AddMGet_Then_Clear(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMGet("some:key", MGetOptions{})
+
+	assert.Equal(t, 1, b.getCmd().cmdCount)
+	assert.Equal(t, "mg some:key v\r\n", string(b.getCmd().requestData))
+	assert.Equal(t, 1, b.getMgetCount())
+
+	b.clearCmd()
+
+	assert.Nil(t, b.getCmd())
+}

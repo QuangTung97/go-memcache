@@ -126,6 +126,10 @@ func (b *cmdBuilder) getCmd() *commandData {
 	return b.cmd
 }
 
+func (b *cmdBuilder) clearCmd() {
+	b.cmd = nil
+}
+
 func (b *cmdBuilder) getMgetCount() int {
 	return b.mgetCount
 }
