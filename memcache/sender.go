@@ -256,6 +256,7 @@ func (b *recvBuffer) read(cmdList []*commandData) int {
 	for i := uint64(0); i < n; i++ {
 		index := (b.begin + i) & b.mask
 		cmdList[i] = b.buf[index]
+		b.buf[index] = nil
 	}
 	b.begin += n
 

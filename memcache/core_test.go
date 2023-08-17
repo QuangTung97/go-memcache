@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"bytes"
 	"errors"
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"github.com/stretchr/testify/assert"
@@ -116,4 +117,31 @@ func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_
 		[]byte("ABCD"),
 	}, cmd1.responseBinaries)
 	assert.Equal(t, "HD\r\n", string(cmd2.responseData))
+}
+
+func TestCommandListReader(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		var buf bytes.Buffer
+		s := newSender(newNetConnForTest(&buf), 8)
+		r := newCmdListReader(s)
+
+		cmd1 := newCommandFromString("mg key01 v\r\n")
+		cmd2 := newCommandFromString("mg key02 v\r\n")
+
+		s.publish(cmd1)
+		s.publish(cmd2)
+
+		n := r.readIfExhausted()
+		assert.Equal(t, 2, n)
+
+		assert.NotNil(t, r.cmdList[0])
+		assert.NotNil(t, r.cmdList[1])
+		assert.Nil(t, r.cmdList[2])
+
+		r.next()
+
+		assert.Nil(t, r.cmdList[0])
+		assert.NotNil(t, r.cmdList[1])
+		assert.Nil(t, r.cmdList[2])
+	})
 }
