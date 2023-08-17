@@ -152,5 +152,6 @@ func (c *cmdListReader) current() *commandData {
 }
 
 func (c *cmdListReader) next() {
+	c.cmdList[c.offset] = nil
 	c.offset++
 }
