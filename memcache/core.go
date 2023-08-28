@@ -1,17 +1,17 @@
 package memcache
 
 import (
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
+	"errors"
 	"sync"
-	"sync/atomic"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 type coreConnection struct {
 	responseReader *responseReader
 	sender         *sender
 
-	shuttingDown uint32 // boolean
-	wg           sync.WaitGroup
+	wg sync.WaitGroup
 
 	// job data
 	msgData []byte
@@ -25,8 +25,6 @@ func newCoreConnection(nc netconn.NetConn, options *memcacheOptions) *coreConnec
 		responseReader: newResponseReader(),
 		sender:         cmdSender,
 
-		shuttingDown: 0,
-
 		msgData: make([]byte, options.bufferSize),
 		cmdList: newCmdListReader(cmdSender),
 	}
@@ -35,14 +33,6 @@ func newCoreConnection(nc netconn.NetConn, options *memcacheOptions) *coreConnec
 	go c.recvCommands()
 
 	return c
-}
-
-func (c *coreConnection) isShuttingDown() bool {
-	return atomic.LoadUint32(&c.shuttingDown) > 0
-}
-
-func (c *coreConnection) shutdown() {
-	atomic.StoreUint32(&c.shuttingDown, 1)
 }
 
 func (c *coreConnection) waitReceiverShutdown() {
@@ -57,8 +47,8 @@ func (c *coreConnection) resetNetConn(nc netconn.NetConn) {
 	c.sender.resetNetConn(nc)
 }
 
-func (c *coreConnection) waitForError() {
-	c.sender.waitForError()
+func (c *coreConnection) waitForError() (closed bool) {
+	return c.sender.waitForError()
 }
 
 func (c *coreConnection) recvCommands() {
@@ -66,14 +56,13 @@ func (c *coreConnection) recvCommands() {
 
 	for {
 		err := c.recvSingleCommandData()
-		if err == ErrConnClosed { // cmd len == 0
-			return
-		}
 		if err != nil {
-			c.responseReader.reset()
+			if errors.Is(err, ErrConnClosed) { // cmd len == 0
+				c.sender.shutdown()
+				return
+			}
 
-			reader := c.cmdList.current().reader
-			c.sender.setNetConnError(err, reader)
+			c.responseReader.reset()
 		}
 		c.cmdList.current().setCompleted(err)
 		c.cmdList.next()
@@ -113,7 +102,7 @@ func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) e
 			return c.responseReader.hasError() // TODO testing
 		}
 
-		n, err := current.reader.Read(c.msgData)
+		n, err := current.conn.readData(c.msgData)
 		if err != nil {
 			return err
 		}

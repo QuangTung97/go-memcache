@@ -1,9 +1,10 @@
 package memcache
 
 import (
-	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func connFlushAll(c *clientConn) {
@@ -15,7 +16,7 @@ func connFlushAll(c *clientConn) {
 func TestConn_Simple_Get_Miss(t *testing.T) {
 	c := newConn("localhost:11211")
 	defer func() {
-		_ = c.shutdown()
+		c.shutdown()
 		c.waitCloseCompleted()
 	}()
 
@@ -31,7 +32,7 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 	c := newConn("localhost:11211")
 	defer func() {
-		_ = c.shutdown()
+		c.shutdown()
 		c.waitCloseCompleted()
 	}()
 
@@ -48,7 +49,7 @@ func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 func TestConn_Set_Get(t *testing.T) {
 	c := newConn("localhost:11211")
 	defer func() {
-		_ = c.shutdown()
+		c.shutdown()
 		c.waitCloseCompleted()
 	}()
 
@@ -84,7 +85,6 @@ func TestConn_Shutdown(t *testing.T) {
 
 	assert.Equal(t, "EN\r\n", string(cmd1.responseData))
 
-	err := c.shutdown()
-	assert.Equal(t, nil, err)
+	c.shutdown()
 	c.waitCloseCompleted()
 }

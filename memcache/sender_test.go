@@ -5,14 +5,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 func newCommandFromString(s string) *commandData {
@@ -50,7 +52,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8)
 
-	s.ncMut.Lock()
+	s.connMut.Lock()
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -74,7 +76,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	s.ncMut.Unlock()
+	s.connMut.Unlock()
 	wg.Wait()
 
 	cmdList := make([]*commandData, 10)
@@ -199,6 +201,7 @@ func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
 func TestSender_Publish_Write_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
+
 	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
@@ -217,8 +220,8 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
-	assert.Equal(t, errors.New("some error"), cmd1.lastErrAtomic.Load().err)
-	assert.Equal(t, errors.New("some error"), cmd2.lastErrAtomic.Load().err)
+	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastError())
+	assert.Equal(t, errors.New("some error"), cmd2.conn.getLastError())
 
 	s.waitForError()
 }
@@ -247,8 +250,8 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
-	assert.Equal(t, errors.New("some error"), cmd1.lastErrAtomic.Load().err)
-	assert.Equal(t, errors.New("some error"), cmd2.lastErrAtomic.Load().err)
+	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastError())
+	assert.Equal(t, errors.New("some error"), cmd2.conn.getLastError())
 
 	s.waitForError()
 }
@@ -286,10 +289,12 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 
 	cmdList := make([]*commandData, 10)
 	n := s.readSentCommands(cmdList)
+
 	assert.Equal(t, 2, n)
 	assert.Equal(t, []byte("mg key01 v\r\n"), writeBytes)
-	assert.Nil(t, cmdList[0].reader)
-	assert.Same(t, reader2, cmdList[1].reader)
+
+	assert.Nil(t, cmdList[0].conn.reader)
+	assert.Same(t, reader2, cmdList[1].conn.reader)
 }
 
 func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {

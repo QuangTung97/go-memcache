@@ -2,7 +2,6 @@ package memcache
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"strings"
 	"sync"
@@ -10,6 +9,8 @@ import (
 	"time"
 	"unicode"
 	"unsafe"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func pipelineFlushAll(p *Pipeline) {
@@ -283,7 +284,7 @@ func TestPipeline_MSet_Error_Key_Too_Long__Disable_Check(t *testing.T) {
 	}, err)
 
 	resp, err := p.MGet("key01", MGetOptions{})()
-	assert.Equal(t, ErrClientError{Message: "bad command line format"}, err)
+	assert.Equal(t, ErrBrokenPipe{reason: "can not parse mget response"}, err)
 	assert.Equal(t, MGetResponse{}, resp)
 
 	time.Sleep(30 * time.Millisecond)

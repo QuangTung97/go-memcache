@@ -2,11 +2,12 @@ package stats
 
 import (
 	"bufio"
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"log"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 // Client is a client for statistics information & support dump all keys
@@ -507,5 +508,5 @@ type statItem struct {
 
 // Close ...
 func (c *Client) Close() error {
-	return c.nc.Reader.Close()
+	return c.nc.Closer.Close()
 }
