@@ -1,9 +1,10 @@
 package memcache
 
 import (
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"sync"
 	"time"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 type clientConn struct {
@@ -66,7 +67,7 @@ func (c *clientConn) pushCommand(cmd *commandData) {
 	c.core.publish(cmd)
 }
 
-func (c *clientConn) shutdown() error {
+func (c *clientConn) shutdown() {
 	c.mut.Lock()
 	if !c.closed {
 		c.closed = true
@@ -75,8 +76,7 @@ func (c *clientConn) shutdown() error {
 	c.mut.Unlock()
 
 	c.core.shutdown()
-	err := c.core.sender.closeNetConn()
-	return err
+	c.core.sender.closeRecvBuffer()
 }
 
 func (c *clientConn) waitCloseCompleted() {

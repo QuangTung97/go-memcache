@@ -56,16 +56,10 @@ type commandData struct {
 
 	responseBinaries [][]byte // mget binary responses
 
-	reader io.ReadCloser
+	conn *senderConnection
 
-	lastErrAtomic atomic.Pointer[lastError]
-	lastErr       error
-
-	ch chan error
-}
-
-type lastError struct {
-	err error
+	lastErr error
+	ch      chan error
 }
 
 func newCommandChannel() chan error {
@@ -97,19 +91,7 @@ func freeCommandRequestData(cmd *commandData) {
 
 func (c *commandData) waitCompleted() {
 	err := <-c.ch
-
-	atomicErr := c.lastErrAtomic.Load()
-	if atomicErr != nil && atomicErr.err != nil {
-		err = atomicErr.err
-	}
-
 	c.lastErr = err
-}
-
-func (c *commandData) setErrorOnly(err error) {
-	c.lastErrAtomic.Store(&lastError{
-		err: err,
-	})
 }
 
 func (c *commandData) setCompleted(err error) {
@@ -117,20 +99,84 @@ func (c *commandData) setCompleted(err error) {
 }
 
 type sender struct {
-	// ---- protected by ncMut ------
-	nc netconn.NetConn
-
-	alreadyClosed bool
-
-	ncMut  sync.Mutex
-	tmpBuf []*commandData
-
-	lastErr     error
+	// ---- protected by connMut ------
+	connMut     sync.Mutex
+	conn        *senderConnection
+	tmpBuf      []*commandData
 	ncErrorCond *sync.Cond
-	// ---- end ncMut protection ----
+	// ---- end connMut protection ----
 
 	send sendBuffer
 	recv recvBuffer
+}
+
+type senderConnection struct {
+	sender *sender
+
+	writer FlushWriter
+	reader io.Reader
+	closer io.Closer
+
+	lastErr atomic.Pointer[senderLastError]
+}
+
+func newSenderConn(s *sender, nc netconn.NetConn) *senderConnection {
+	return &senderConnection{
+		sender: s,
+
+		writer: nc.Writer,
+		reader: nc.Reader,
+		closer: nc.Closer,
+	}
+}
+
+type senderLastError struct {
+	err error
+}
+
+func (c *senderConnection) setLastError(err error) {
+	c.lastErr.Store(&senderLastError{
+		err: err,
+	})
+}
+
+func (c *senderConnection) getLastError() error {
+	v := c.lastErr.Load()
+	if v == nil {
+		return nil
+	}
+	return v.err
+}
+
+func (c *senderConnection) setLastErrorAndCloseUnsafe(err error) {
+	lastErr := c.getLastError()
+	if lastErr != nil {
+		return
+	}
+	c.setLastError(err)
+	_ = c.closer.Close()
+	c.sender.ncErrorCond.Signal()
+}
+
+func (c *senderConnection) setLastErrorAndClose(err error) {
+	c.sender.connMut.Lock()
+	c.setLastErrorAndCloseUnsafe(err)
+	c.sender.connMut.Unlock()
+}
+
+func (c *senderConnection) readData(data []byte) (int, error) {
+	lastErr := c.getLastError()
+	if lastErr != nil {
+		return 0, lastErr
+	}
+
+	n, err := c.reader.Read(data)
+	if err != nil {
+		c.setLastErrorAndClose(err)
+		return n, c.getLastError()
+	}
+
+	return n, nil
 }
 
 // ----------------------------------
@@ -276,15 +322,13 @@ func (b *recvBuffer) closeBuffer() {
 }
 
 func newSender(nc netconn.NetConn, bufSizeLog int) *sender {
-	s := &sender{
-		nc:      nc,
-		lastErr: nil,
-	}
+	s := &sender{}
+	s.conn = newSenderConn(s, nc)
 
 	initSendBuffer(&s.send, bufSizeLog)
 	initRecvBuffer(&s.recv, bufSizeLog+1)
 
-	s.ncErrorCond = sync.NewCond(&s.ncMut)
+	s.ncErrorCond = sync.NewCond(&s.connMut)
 	return s
 }
 
@@ -296,45 +340,33 @@ func clearCmdList(cmdList []*commandData) []*commandData {
 	return cmdList[:0]
 }
 
-func (s *sender) setLastErrorAndClose(err error) error {
-	s.lastErr = err
-	s.ncErrorCond.Signal()
-	if !s.alreadyClosed {
-		s.alreadyClosed = true
-		return s.nc.Closer.Close()
-	}
-	return nil
-}
-
-func (s *sender) writeAndFlush() error {
-	if s.lastErr != nil {
-		return s.lastErr
+func (s *sender) writeAndFlush() {
+	if s.conn.getLastError() != nil {
+		return
 	}
 
 	for _, cmd := range s.tmpBuf {
-		_, err := s.nc.Writer.Write(cmd.requestData)
+		_, err := s.conn.writer.Write(cmd.requestData)
 		if err != nil {
-			_ = s.setLastErrorAndClose(err)
-			return err
+			s.conn.setLastErrorAndCloseUnsafe(err)
+			return
 		}
 	}
 
-	err := s.nc.Writer.Flush()
+	err := s.conn.writer.Flush()
 	if err != nil {
-		_ = s.setLastErrorAndClose(err)
-		return err
+		s.conn.setLastErrorAndCloseUnsafe(err)
+		return
 	}
-
-	return nil
 }
 
 func (s *sender) sendToWriter() {
-	s.ncMut.Lock()
+	s.connMut.Lock()
 
 	s.tmpBuf = s.send.popAll(s.tmpBuf)
 
 	for _, cmd := range s.tmpBuf {
-		cmd.reader = s.nc.Reader
+		cmd.conn = s.conn
 	}
 
 	remainingCommands, closed := s.recv.push(s.tmpBuf)
@@ -343,23 +375,15 @@ func (s *sender) sendToWriter() {
 			cmd.setCompleted(ErrConnClosed)
 		}
 		s.tmpBuf = clearCmdList(s.tmpBuf)
-		s.ncMut.Unlock()
+		s.connMut.Unlock()
 		return
 	}
 
 	// flush to tcp socket
-	err := s.writeAndFlush()
-	if err != nil {
-		for _, cmd := range s.tmpBuf {
-			cmd.setErrorOnly(err)
-		}
-		s.tmpBuf = clearCmdList(s.tmpBuf)
-		s.ncMut.Unlock()
-		return
-	}
+	s.writeAndFlush()
 
 	s.tmpBuf = clearCmdList(s.tmpBuf)
-	s.ncMut.Unlock()
+	s.connMut.Unlock()
 }
 
 func (s *sender) publish(cmd *commandData) {
@@ -376,41 +400,27 @@ func (s *sender) readSentCommands(cmdList []*commandData) int {
 }
 
 func (s *sender) waitForError() {
-	s.ncMut.Lock()
-	for s.lastErr == nil {
+	s.connMut.Lock()
+	for s.conn.getLastError() == nil {
 		s.ncErrorCond.Wait()
 	}
-	s.ncMut.Unlock()
-}
-
-// setNetConnError used inside *sender.go*
-func (s *sender) setNetConnError(err error, prevReader io.ReadCloser) {
-	s.ncMut.Lock()
-	if s.lastErr != ErrConnClosed {
-		if s.nc.Reader == prevReader {
-			_ = s.setLastErrorAndClose(err)
-		}
-	}
-	s.ncMut.Unlock()
+	s.connMut.Unlock()
 }
 
 func (s *sender) resetNetConn(nc netconn.NetConn) {
-	s.ncMut.Lock()
-	if s.lastErr != ErrConnClosed {
-		s.nc = nc
-		s.alreadyClosed = false
-		s.lastErr = nil
-	}
-	s.ncMut.Unlock()
+	s.connMut.Lock()
+	s.conn = newSenderConn(s, nc)
+	s.connMut.Unlock()
 }
 
-func (s *sender) closeNetConn() error {
-	s.ncMut.Lock()
-
+func (s *sender) closeRecvBuffer() {
+	s.connMut.Lock()
 	s.recv.closeBuffer()
-	err := s.setLastErrorAndClose(ErrConnClosed)
+	s.connMut.Unlock()
+}
 
-	s.ncMut.Unlock()
-
-	return err
+func (s *sender) shutdown() {
+	s.connMut.Lock()
+	s.conn.setLastErrorAndCloseUnsafe(ErrConnClosed)
+	s.connMut.Unlock()
 }

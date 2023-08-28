@@ -32,14 +32,13 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 
 // Close shut down Client
 func (c *Client) Close() error {
-	var err error
 	for _, conn := range c.conns {
-		err = conn.shutdown()
+		conn.shutdown()
 	}
 	for _, conn := range c.conns {
 		conn.waitCloseCompleted()
 	}
-	return err
+	return nil
 }
 
 func (c *Client) getNextConn() *clientConn {
