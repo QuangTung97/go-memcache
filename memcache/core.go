@@ -3,7 +3,6 @@ package memcache
 import (
 	"errors"
 	"sync"
-	"sync/atomic"
 
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
@@ -12,8 +11,7 @@ type coreConnection struct {
 	responseReader *responseReader
 	sender         *sender
 
-	shuttingDown atomic.Bool
-	wg           sync.WaitGroup
+	wg sync.WaitGroup
 
 	// job data
 	msgData []byte
@@ -37,14 +35,6 @@ func newCoreConnection(nc netconn.NetConn, options *memcacheOptions) *coreConnec
 	return c
 }
 
-func (c *coreConnection) isShuttingDown() bool {
-	return c.shuttingDown.Load()
-}
-
-func (c *coreConnection) shutdown() {
-	c.shuttingDown.Store(true)
-}
-
 func (c *coreConnection) waitReceiverShutdown() {
 	c.wg.Wait()
 }
@@ -57,8 +47,8 @@ func (c *coreConnection) resetNetConn(nc netconn.NetConn) {
 	c.sender.resetNetConn(nc)
 }
 
-func (c *coreConnection) waitForError() {
-	c.sender.waitForError()
+func (c *coreConnection) waitForError() (closed bool) {
+	return c.sender.waitForError()
 }
 
 func (c *coreConnection) recvCommands() {

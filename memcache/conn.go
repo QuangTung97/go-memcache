@@ -42,8 +42,8 @@ func newConn(addr string, options ...Option) *clientConn {
 		defer c.wg.Done()
 
 		for {
-			c.core.waitForError()
-			if c.core.isShuttingDown() {
+			closed := c.core.waitForError()
+			if closed {
 				return
 			}
 
@@ -75,7 +75,6 @@ func (c *clientConn) shutdown() {
 	}
 	c.mut.Unlock()
 
-	c.core.shutdown()
 	c.core.sender.closeRecvBuffer()
 }
 

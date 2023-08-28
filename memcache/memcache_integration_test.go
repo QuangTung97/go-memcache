@@ -3,8 +3,6 @@ package memcache
 import (
 	"errors"
 	"fmt"
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net"
 	"os"
@@ -13,6 +11,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 func TestClient_New_With_NumConns_Zero(t *testing.T) {

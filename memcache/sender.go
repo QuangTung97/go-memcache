@@ -104,6 +104,7 @@ type sender struct {
 	conn        *senderConnection
 	tmpBuf      []*commandData
 	ncErrorCond *sync.Cond
+	closed      bool
 	// ---- end connMut protection ----
 
 	send sendBuffer
@@ -399,12 +400,14 @@ func (s *sender) readSentCommands(cmdList []*commandData) int {
 	return s.recv.read(cmdList)
 }
 
-func (s *sender) waitForError() {
+func (s *sender) waitForError() (closed bool) {
 	s.connMut.Lock()
-	for s.conn.getLastError() == nil {
+	result := s.closed
+	for !s.closed && s.conn.getLastError() == nil {
 		s.ncErrorCond.Wait()
 	}
 	s.connMut.Unlock()
+	return result
 }
 
 func (s *sender) resetNetConn(nc netconn.NetConn) {
@@ -421,6 +424,7 @@ func (s *sender) closeRecvBuffer() {
 
 func (s *sender) shutdown() {
 	s.connMut.Lock()
+	s.closed = true
 	s.conn.setLastErrorAndCloseUnsafe(ErrConnClosed)
 	s.connMut.Unlock()
 }
