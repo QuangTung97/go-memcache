@@ -95,11 +95,11 @@ func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) e
 		// Read from response reader
 		ok := c.responseReader.readNextData()
 		if ok {
+			if c.responseReader.hasError() != nil {
+				err := c.responseReader.hasError()
+				return current.conn.setLastErrorAndClose(err)
+			}
 			return nil
-		}
-
-		if c.responseReader.hasError() != nil {
-			return c.responseReader.hasError() // TODO testing
 		}
 
 		n, err := current.conn.readData(c.msgData)
