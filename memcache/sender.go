@@ -135,13 +135,13 @@ type senderLastError struct {
 	err error
 }
 
-func (c *senderConnection) setLastError(err error) {
+func (c *senderConnection) setLastErrorInternal(err error) {
 	c.lastErr.Store(&senderLastError{
 		err: err,
 	})
 }
 
-func (c *senderConnection) getLastError() error {
+func (c *senderConnection) getLastErrorInternal() error {
 	v := c.lastErr.Load()
 	if v == nil {
 		return nil
@@ -149,32 +149,33 @@ func (c *senderConnection) getLastError() error {
 	return v.err
 }
 
-func (c *senderConnection) setLastErrorAndCloseUnsafe(err error) {
-	lastErr := c.getLastError()
+func (c *senderConnection) setLastErrorAndCloseUnsafe(err error) error {
+	lastErr := c.getLastErrorInternal()
 	if lastErr != nil {
-		return
+		return lastErr
 	}
-	c.setLastError(err)
+	c.setLastErrorInternal(err)
 	_ = c.closer.Close()
 	c.sender.ncErrorCond.Signal()
+	return err
 }
 
-func (c *senderConnection) setLastErrorAndClose(err error) {
+func (c *senderConnection) setLastErrorAndClose(err error) error {
 	c.sender.connMut.Lock()
-	c.setLastErrorAndCloseUnsafe(err)
+	resultErr := c.setLastErrorAndCloseUnsafe(err)
 	c.sender.connMut.Unlock()
+	return resultErr
 }
 
 func (c *senderConnection) readData(data []byte) (int, error) {
-	lastErr := c.getLastError()
+	lastErr := c.getLastErrorInternal()
 	if lastErr != nil {
 		return 0, lastErr
 	}
 
 	n, err := c.reader.Read(data)
 	if err != nil {
-		c.setLastErrorAndClose(err)
-		return n, c.getLastError()
+		return n, c.setLastErrorAndClose(err)
 	}
 
 	return n, nil
@@ -342,21 +343,21 @@ func clearCmdList(cmdList []*commandData) []*commandData {
 }
 
 func (s *sender) writeAndFlush() {
-	if s.conn.getLastError() != nil {
+	if s.conn.getLastErrorInternal() != nil {
 		return
 	}
 
 	for _, cmd := range s.tmpBuf {
 		_, err := s.conn.writer.Write(cmd.requestData)
 		if err != nil {
-			s.conn.setLastErrorAndCloseUnsafe(err)
+			_ = s.conn.setLastErrorAndCloseUnsafe(err)
 			return
 		}
 	}
 
 	err := s.conn.writer.Flush()
 	if err != nil {
-		s.conn.setLastErrorAndCloseUnsafe(err)
+		_ = s.conn.setLastErrorAndCloseUnsafe(err)
 		return
 	}
 }
@@ -403,7 +404,7 @@ func (s *sender) readSentCommands(cmdList []*commandData) int {
 func (s *sender) waitForError() (closed bool) {
 	s.connMut.Lock()
 	result := s.closed
-	for !s.closed && s.conn.getLastError() == nil {
+	for !s.closed && s.conn.getLastErrorInternal() == nil {
 		s.ncErrorCond.Wait()
 	}
 	s.connMut.Unlock()
@@ -425,6 +426,6 @@ func (s *sender) closeRecvBuffer() {
 func (s *sender) shutdown() {
 	s.connMut.Lock()
 	s.closed = true
-	s.conn.setLastErrorAndCloseUnsafe(ErrConnClosed)
+	_ = s.conn.setLastErrorAndCloseUnsafe(ErrConnClosed)
 	s.connMut.Unlock()
 }

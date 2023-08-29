@@ -2,8 +2,9 @@ package memcache
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestServerError(t *testing.T) {
@@ -14,6 +15,11 @@ func TestServerError(t *testing.T) {
 func TestClientError(t *testing.T) {
 	e := NewClientError("some error")
 	assert.Equal(t, "client error: some error", e.Error())
+}
+
+func TestBrokenPipeError(t *testing.T) {
+	e := ErrBrokenPipe{reason: "some reason"}
+	assert.Equal(t, "broken pipe: some reason", e.Error())
 }
 
 func TestIsErrorMessage(t *testing.T) {

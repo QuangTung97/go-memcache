@@ -3,11 +3,13 @@ package memcache
 import (
 	"bytes"
 	"errors"
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 func newCoreConnTest(
@@ -117,6 +119,45 @@ func TestCoreConnection_Continue_After_Read_Single_Command__Without_reader_Read_
 		[]byte("ABCD"),
 	}, cmd1.responseBinaries)
 	assert.Equal(t, "HD\r\n", string(cmd2.responseData))
+}
+
+func TestCoreConnection_Reader_Returns_Incorrect_Data__Response_Reader_Returns_Error(t *testing.T) {
+	writer1 := &FlushWriterMock{}
+	reader1 := &readCloserInterfaceMock{}
+
+	c := newCoreConnTest(writer1, reader1, reader1)
+
+	finish := make(chan struct{})
+	writer1.WriteFunc = func(p []byte) (int, error) {
+		return len(p), nil
+	}
+	writer1.FlushFunc = func() error {
+		close(finish)
+		return nil
+	}
+
+	reader1.ReadFunc = func(p []byte) (int, error) {
+		<-finish
+		data := "VA x\r\n"
+		copy(p, data)
+		return len(data), nil
+	}
+	reader1.CloseFunc = func() error { return nil }
+
+	cmd1 := newCommandFromString("mg key01 v\r\n")
+	c.publish(cmd1)
+
+	cmd1.waitCompleted()
+
+	assert.Equal(t, ErrBrokenPipe{
+		reason: "not a number after VA",
+	}, cmd1.lastErr)
+
+	assert.Equal(t, 1, len(writer1.WriteCalls()))
+	assert.Equal(t, 1, len(writer1.FlushCalls()))
+
+	assert.Equal(t, 1, len(reader1.ReadCalls()))
+	assert.Equal(t, 1, len(reader1.CloseCalls()))
 }
 
 func TestCommandListReader(t *testing.T) {

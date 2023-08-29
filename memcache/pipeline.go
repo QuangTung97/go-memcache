@@ -102,7 +102,7 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) {
 			if IsServerError(cmd.err) {
 				continue
 			}
-			currentCmd.conn.setLastErrorAndClose(cmd.err)
+			cmd.err = currentCmd.conn.setLastErrorAndClose(cmd.err)
 		}
 	}
 }

@@ -220,8 +220,8 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
-	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastError())
-	assert.Equal(t, errors.New("some error"), cmd2.conn.getLastError())
+	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastErrorInternal())
+	assert.Equal(t, errors.New("some error"), cmd2.conn.getLastErrorInternal())
 
 	s.waitForError()
 }
@@ -250,8 +250,8 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
-	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastError())
-	assert.Equal(t, errors.New("some error"), cmd2.conn.getLastError())
+	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastErrorInternal())
+	assert.Equal(t, errors.New("some error"), cmd2.conn.getLastErrorInternal())
 
 	s.waitForError()
 }
