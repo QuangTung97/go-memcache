@@ -41,10 +41,10 @@ func (b *sendBuffer) push(cmd *commandData) (closed bool) {
 	return false
 }
 
-func (b *sendBuffer) popAll() (cmdList *commandData, closed bool) {
+func (b *sendBuffer) popAll(waiting bool) (cmdList *commandData, closed bool) {
 	b.mut.Lock()
 
-	for !b.closed && b.firstCmd == nil {
+	for waiting && !b.closed && b.firstCmd == nil {
 		b.cond.Wait()
 	}
 

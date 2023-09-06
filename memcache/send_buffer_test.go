@@ -25,7 +25,7 @@ func TestSendBuffer(t *testing.T) {
 		closed = b.push(newCommandFromString("mg key02"))
 		assert.Equal(t, false, closed)
 
-		cmdList, closed := b.popAll()
+		cmdList, closed := b.popAll(true)
 		assert.Equal(t, false, closed)
 
 		// check cmd list
@@ -40,7 +40,7 @@ func TestSendBuffer(t *testing.T) {
 		closed = b.push(newCommandFromString("mg key03"))
 		assert.Equal(t, false, closed)
 
-		cmdList, closed = b.popAll()
+		cmdList, closed = b.popAll(true)
 		assert.Equal(t, false, closed)
 
 		assert.Equal(t, "mg key03", string(cmdList.requestData))
@@ -52,7 +52,7 @@ func TestSendBuffer(t *testing.T) {
 		closed = b.push(newCommandFromString("mg key04"))
 		assert.Equal(t, true, closed)
 
-		cmdList, closed = b.popAll()
+		cmdList, closed = b.popAll(true)
 		assert.Equal(t, true, closed)
 
 		assert.Nil(t, cmdList)
@@ -70,7 +70,7 @@ func TestSendBuffer(t *testing.T) {
 
 		b.close()
 
-		cmdList, closed := b.popAll()
+		cmdList, closed := b.popAll(true)
 		assert.Equal(t, true, closed)
 
 		// check cmd list
@@ -92,7 +92,7 @@ func TestSendBuffer(t *testing.T) {
 		var popClosed bool
 
 		go func() {
-			cmdList, popClosed = b.popAll()
+			cmdList, popClosed = b.popAll(true)
 			popped.Store(true)
 			close(closeCh)
 		}()
@@ -109,5 +109,13 @@ func TestSendBuffer(t *testing.T) {
 		assert.Nil(t, cmdList.link)
 
 		assert.Equal(t, false, popClosed)
+	})
+
+	t.Run("pop all no wait", func(t *testing.T) {
+		b := newSendBuffer()
+
+		cmdList, closed := b.popAll(false)
+		assert.Equal(t, false, closed)
+		assert.Nil(t, cmdList)
 	})
 }
