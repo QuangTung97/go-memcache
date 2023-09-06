@@ -25,8 +25,8 @@ type sender struct {
 	closed      bool
 	// ---- end connMut protection ----
 
-	send sendBuffer
-	recv recvBuffer
+	sendCh chan *commandData
+	recv   recvBuffer
 }
 
 type senderConnection struct {
@@ -97,53 +97,6 @@ func (c *senderConnection) readData(data []byte) (int, error) {
 	}
 
 	return n, nil
-}
-
-// ----------------------------------
-// Send Buffer
-// ----------------------------------
-type sendBuffer struct {
-	buf    []*commandData
-	maxLen int
-	mut    sync.Mutex
-	cond   *sync.Cond
-}
-
-func initSendBuffer(b *sendBuffer, bufSizeLog int) {
-	maxSize := 1 << bufSizeLog
-	b.buf = make([]*commandData, 0, maxSize)
-	b.maxLen = maxSize
-
-	b.cond = sync.NewCond(&b.mut)
-}
-
-func (b *sendBuffer) popAll(output []*commandData) []*commandData {
-	b.mut.Lock()
-	output = append(output, b.buf...)
-
-	// clear buffer
-	for i := range b.buf {
-		b.buf[i] = nil
-	}
-	b.buf = b.buf[:0]
-
-	b.mut.Unlock()
-
-	b.cond.Broadcast()
-	return output
-}
-
-func (b *sendBuffer) push(cmd *commandData) (isLeader bool) {
-	b.mut.Lock()
-	for len(b.buf) >= b.maxLen {
-		b.cond.Wait()
-	}
-
-	prevLen := len(b.buf)
-	b.buf = append(b.buf, cmd)
-	b.mut.Unlock()
-
-	return prevLen == 0
 }
 
 // ----------------------------------
@@ -245,10 +198,13 @@ func newSender(nc netconn.NetConn, bufSizeLog int) *sender {
 	s := &sender{}
 	s.conn = newSenderConn(s, nc)
 
-	initSendBuffer(&s.send, bufSizeLog)
+	s.sendCh = make(chan *commandData, bufSizeLog)
 	initRecvBuffer(&s.recv, bufSizeLog+1)
 
 	s.ncErrorCond = sync.NewCond(&s.connMut)
+
+	go s.runSenderJob()
+
 	return s
 }
 
@@ -280,10 +236,10 @@ func (s *sender) writeAndFlush() {
 	}
 }
 
-func (s *sender) sendToWriter() {
-	s.connMut.Lock()
+func (s *sender) sendToWriter() (closed bool) {
+	//s.tmpBuf = s.send.popAll(s.tmpBuf)
 
-	s.tmpBuf = s.send.popAll(s.tmpBuf)
+	s.connMut.Lock()
 
 	for _, cmd := range s.tmpBuf {
 		cmd.conn = s.conn
@@ -296,7 +252,7 @@ func (s *sender) sendToWriter() {
 		}
 		s.tmpBuf = clearCmdList(s.tmpBuf)
 		s.connMut.Unlock()
-		return
+		return closed
 	}
 
 	// flush to tcp socket
@@ -304,15 +260,21 @@ func (s *sender) sendToWriter() {
 
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 	s.connMut.Unlock()
+
+	return false
 }
 
 func (s *sender) publish(cmd *commandData) {
-	isLeader := s.send.push(cmd)
-	if !isLeader {
-		return
-	}
+	s.sendCh <- cmd
+}
 
-	s.sendToWriter()
+func (s *sender) runSenderJob() {
+	for {
+		closed := s.sendToWriter()
+		if closed {
+			return
+		}
+	}
 }
 
 func (s *sender) readSentCommands(cmdList []*commandData) int {

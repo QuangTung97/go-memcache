@@ -116,7 +116,6 @@ func stringsToMap(list []string) map[string]struct{} {
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 2)
-	assert.Equal(t, 4, s.send.maxLen)
 
 	const numRounds = 200000
 
@@ -318,71 +317,6 @@ func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
 
 	assert.Equal(t, 1, len(closer2.CloseCalls()))
 	assert.Equal(t, ErrConnClosed, s.conn.getLastErrorInternal())
-}
-
-func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {
-	var b sendBuffer
-	initSendBuffer(&b, 1)
-
-	var wg sync.WaitGroup
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key01 v\r\n"))
-	}()
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key02 v\r\n"))
-	}()
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key03 v\r\n"))
-	}()
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key04 v\r\n"))
-	}()
-
-	time.Sleep(5 * time.Millisecond)
-
-	commands := map[string]struct{}{}
-
-	output := b.popAll(nil)
-	assert.Equal(t, 2, len(output))
-	commands[string(output[0].requestData)] = struct{}{}
-	commands[string(output[1].requestData)] = struct{}{}
-
-	wg.Wait()
-
-	output = b.popAll(nil)
-	assert.Equal(t, 2, len(output))
-	commands[string(output[0].requestData)] = struct{}{}
-	commands[string(output[1].requestData)] = struct{}{}
-
-	assert.Equal(t, map[string]struct{}{
-		"mg key01 v\r\n": {},
-		"mg key02 v\r\n": {},
-		"mg key03 v\r\n": {},
-		"mg key04 v\r\n": {},
-	}, commands)
-}
-
-func TestSendBuffer_Clear_Commands_To_Nil(t *testing.T) {
-	var b sendBuffer
-	initSendBuffer(&b, 2)
-
-	b.push(newCommandFromString("mg key01 v\r\n"))
-	b.push(newCommandFromString("mg key02 v\r\n"))
-	b.push(newCommandFromString("mg key03 v\r\n"))
-
-	cmdList := b.popAll(nil)
-	assert.Equal(t, 3, len(cmdList))
-
-	b.buf = b.buf[:4]
-	assert.Nil(t, b.buf[0])
-	assert.Nil(t, b.buf[1])
-	assert.Nil(t, b.buf[2])
-	assert.Nil(t, b.buf[3])
 }
 
 func TestRecvBuffer__Push_And_Then_Read__Command_List_Should_Be_Nil(t *testing.T) {

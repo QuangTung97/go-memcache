@@ -48,6 +48,9 @@ func (p *bytesPool) put(data []byte) {
 type commandData struct {
 	cmdCount int
 
+	sibling *commandData // for commands of the same pipeline
+	link    *commandData // for linking to form a list
+
 	requestData  []byte
 	responseData []byte
 
