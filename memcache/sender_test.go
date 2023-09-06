@@ -317,6 +317,7 @@ func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
 	s.resetNetConn(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer2})
 
 	assert.Equal(t, 1, len(closer2.CloseCalls()))
+	assert.Equal(t, ErrConnClosed, s.conn.getLastErrorInternal())
 }
 
 func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {
