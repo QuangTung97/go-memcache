@@ -413,7 +413,11 @@ func (s *sender) waitForError() (closed bool) {
 
 func (s *sender) resetNetConn(nc netconn.NetConn) {
 	s.connMut.Lock()
-	s.conn = newSenderConn(s, nc)
+	if s.closed {
+		_ = nc.Closer.Close()
+	} else {
+		s.conn = newSenderConn(s, nc)
+	}
 	s.connMut.Unlock()
 }
 

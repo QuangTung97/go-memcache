@@ -297,6 +297,28 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	assert.Same(t, reader2, cmdList[1].conn.reader)
 }
 
+func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
+	closer1 := &closerInterfaceMock{}
+	closer1.CloseFunc = func() error {
+		return nil
+	}
+
+	s := newSender(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer1}, 8)
+
+	s.shutdown()
+
+	assert.Equal(t, 1, len(closer1.CloseCalls()))
+
+	// Do Reset
+	closer2 := &closerInterfaceMock{}
+	closer2.CloseFunc = func() error {
+		return nil
+	}
+	s.resetNetConn(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer2})
+
+	assert.Equal(t, 1, len(closer2.CloseCalls()))
+}
+
 func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {
 	var b sendBuffer
 	initSendBuffer(&b, 1)
