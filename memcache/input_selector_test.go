@@ -177,6 +177,46 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, "mg key04", string(cmds[0].requestData))
 		assert.Equal(t, "mg key05", string(cmds[1].requestData))
 	})
+
+	t.Run("do close after push", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandWithCount("mg key01", 1))
+		sendBuf.push(newCommandWithCount("mg key02", 1))
+		sendBuf.push(newCommandWithCount("mg key03", 1))
+		sendBuf.push(newCommandWithCount("mg key04", 1))
+		sendBuf.push(newCommandWithCount("mg key05", 1))
+
+		sendBuf.close()
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+		assert.Equal(t, "mg key02", string(cmds[1].requestData))
+		assert.Equal(t, "mg key03", string(cmds[2].requestData))
+
+		var finished atomic.Bool
+		finishCh := make(chan struct{})
+		go func() {
+			cmds, closed = s.readCommands(nil)
+			finished.Store(true)
+			close(finishCh)
+		}()
+
+		time.Sleep(5 * time.Millisecond)
+		assert.Equal(t, false, finished.Load())
+
+		s.addReadCount(3)
+
+		<-finishCh
+
+		assert.Equal(t, true, closed)
+		assert.Equal(t, 2, len(cmds))
+		assert.Equal(t, "mg key04", string(cmds[0].requestData))
+		assert.Equal(t, "mg key05", string(cmds[1].requestData))
+	})
 }
 
 func newConnWriteLimiter(limit int) *connWriteLimiter {

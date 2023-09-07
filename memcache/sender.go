@@ -25,8 +25,9 @@ type sender struct {
 	closed      bool
 	// ---- end connMut protection ----
 
-	sendCh chan *commandData
-	recv   recvBuffer
+	sendBuf  sendBuffer
+	selector inputSelector
+	recv     recvBuffer
 }
 
 type senderConnection struct {
@@ -194,14 +195,15 @@ func (b *recvBuffer) closeBuffer() {
 	b.recvCond.Signal()
 }
 
-func newSender(nc netconn.NetConn, bufSizeLog int) *sender {
+func newSender(nc netconn.NetConn, bufSizeLog int, writeLimit int) *sender {
 	s := &sender{}
 	s.conn = newSenderConn(s, nc)
-
-	s.sendCh = make(chan *commandData, bufSizeLog)
-	initRecvBuffer(&s.recv, bufSizeLog+1)
-
 	s.ncErrorCond = sync.NewCond(&s.connMut)
+
+	initSendBuffer(&s.sendBuf)
+	initInputSelector(&s.selector, &s.sendBuf, writeLimit)
+
+	initRecvBuffer(&s.recv, bufSizeLog+1)
 
 	go s.runSenderJob()
 
@@ -237,7 +239,7 @@ func (s *sender) writeAndFlush() {
 }
 
 func (s *sender) sendToWriter() (closed bool) {
-	//s.tmpBuf = s.send.popAll(s.tmpBuf)
+	s.tmpBuf, closed = s.selector.readCommands(s.tmpBuf)
 
 	s.connMut.Lock()
 
@@ -245,15 +247,7 @@ func (s *sender) sendToWriter() (closed bool) {
 		cmd.conn = s.conn
 	}
 
-	remainingCommands, closed := s.recv.push(s.tmpBuf)
-	if closed {
-		for _, cmd := range remainingCommands {
-			cmd.setCompleted(ErrConnClosed)
-		}
-		s.tmpBuf = clearCmdList(s.tmpBuf)
-		s.connMut.Unlock()
-		return closed
-	}
+	s.recv.push(s.tmpBuf)
 
 	// flush to tcp socket
 	s.writeAndFlush()
@@ -261,14 +255,19 @@ func (s *sender) sendToWriter() (closed bool) {
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 	s.connMut.Unlock()
 
-	return false
+	return closed
 }
 
 func (s *sender) publish(cmd *commandData) {
-	s.sendCh <- cmd
+	closed := s.sendBuf.push(cmd)
+	if closed {
+		cmd.setCompleted(ErrConnClosed) // TODO Check test if removed
+	}
 }
 
 func (s *sender) runSenderJob() {
+	defer s.recv.closeBuffer()
+
 	for {
 		closed := s.sendToWriter()
 		if closed {
@@ -301,10 +300,8 @@ func (s *sender) resetNetConn(nc netconn.NetConn) {
 	s.connMut.Unlock()
 }
 
-func (s *sender) closeRecvBuffer() {
-	s.connMut.Lock()
-	s.recv.closeBuffer()
-	s.connMut.Unlock()
+func (s *sender) closeSendJob() {
+	s.sendBuf.close()
 }
 
 func (s *sender) shutdown() {

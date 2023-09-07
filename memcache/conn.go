@@ -75,7 +75,7 @@ func (c *clientConn) shutdown() {
 	}
 	c.mut.Unlock()
 
-	c.core.sender.closeRecvBuffer()
+	c.core.sender.closeSendJob()
 }
 
 func (c *clientConn) waitCloseCompleted() {

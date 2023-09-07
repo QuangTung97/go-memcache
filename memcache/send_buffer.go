@@ -63,4 +63,5 @@ func (b *sendBuffer) popAll(waiting bool) (cmdList *commandData, closed bool) {
 
 func (b *sendBuffer) close() {
 	b.closed = true
+	// TODO Mutex & Signal
 }

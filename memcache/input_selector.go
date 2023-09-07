@@ -19,14 +19,14 @@ func initInputSelector(s *inputSelector, sendBuf *sendBuffer, limit int) {
 
 func (s *inputSelector) traverseCommandList(
 	next *commandData, result []*commandData,
-) []*commandData {
+) (newResult []*commandData, allData bool) {
 	waiting := true
 	for next != nil {
 		writeCount := uint64(next.cmdCount)
 
 		if !s.writeLimiter.allowMoreWrite(writeCount, waiting) {
 			s.remaining = next
-			return result
+			return result, false
 		}
 		s.writeLimiter.addWriteCount(writeCount)
 
@@ -35,7 +35,7 @@ func (s *inputSelector) traverseCommandList(
 		result = append(result, next)
 		next = next.link
 	}
-	return result
+	return result, true
 }
 
 func (s *inputSelector) linkRemainingWithInput(inputCmdList *commandData) *commandData {
@@ -55,7 +55,13 @@ func (s *inputSelector) readCommands(placeholder []*commandData) ([]*commandData
 	cmdList, closed := s.sendBuf.popAll(waiting)
 
 	next := s.linkRemainingWithInput(cmdList)
-	return s.traverseCommandList(next, placeholder), closed
+	result, allData := s.traverseCommandList(next, placeholder)
+
+	if !allData {
+		closed = false
+	}
+
+	return result, closed
 }
 
 func (s *inputSelector) addReadCount(num uint64) {
@@ -85,6 +91,7 @@ func (l *connWriteLimiter) addWriteCount(num uint64) {
 	l.cmdWriteCount += num
 }
 
+//revive:disable-next-line:flag-parameter
 func (l *connWriteLimiter) allowMoreWrite(num uint64, waiting bool) bool {
 	newWriteCount := l.cmdWriteCount + num
 

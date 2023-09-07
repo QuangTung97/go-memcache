@@ -34,7 +34,7 @@ func newNetConnForTest(buf *bytes.Buffer) netconn.NetConn {
 
 func TestSender_Publish(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8, 1000)
 
 	s.publish(newCommandFromString("mg key01 v\r\n"))
 	s.publish(newCommandFromString("mg key02 v k\r\n"))
@@ -50,7 +50,7 @@ func TestSender_Publish(t *testing.T) {
 
 func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8, 1000)
 
 	s.connMut.Lock()
 
@@ -115,7 +115,7 @@ func stringsToMap(list []string) map[string]struct{} {
 //revive:disable-next-line:cognitive-complexity
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 2)
+	s := newSender(newNetConnForTest(&buf), 2, 1000)
 
 	const numRounds = 200000
 
@@ -185,7 +185,7 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 
 func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8, 1000)
 
 	var ended uint32
 	go func() {
@@ -201,7 +201,7 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
 
-	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8, 1000)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
 		return 0, errors.New("some error")
@@ -228,7 +228,7 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 func TestSender_Publish_Flush_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
-	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8, 1000)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil
@@ -262,7 +262,7 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	reader2 := &readCloserInterfaceMock{}
 
 	closer := &closerInterfaceMock{}
-	s := newSender(netconn.NetConn{Writer: writer1, Closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer1, Closer: closer}, 8, 1000)
 
 	var writeBytes []byte
 	writer1.WriteFunc = func(p []byte) (int, error) {
@@ -302,7 +302,7 @@ func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
 		return nil
 	}
 
-	s := newSender(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer1}, 8)
+	s := newSender(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer1}, 8, 1000)
 
 	s.shutdown()
 

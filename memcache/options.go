@@ -1,15 +1,17 @@
 package memcache
 
 import (
-	"github.com/QuangTung97/go-memcache/memcache/netconn"
 	"log"
 	"net"
 	"time"
+
+	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
 type memcacheOptions struct {
 	retryDuration time.Duration
 	bufferSize    int
+	writeLimit    int
 
 	dialErrorLogger func(err error)
 
@@ -27,6 +29,7 @@ func computeOptions(options ...Option) *memcacheOptions {
 	opts := &memcacheOptions{
 		retryDuration: 10 * time.Second,
 		bufferSize:    16 * 1024,
+		writeLimit:    500,
 
 		dialErrorLogger: func(err error) {
 			log.Println("[ERROR] Memcache dial error:", err)
@@ -78,5 +81,12 @@ func WithDialFunc(dialFunc func(network, address string, timeout time.Duration) 
 func WithNetConnOptions(options ...netconn.Option) Option {
 	return func(opts *memcacheOptions) {
 		opts.addConnOption(options...)
+	}
+}
+
+// WithWriteLimit limit the number of concurrent operations send to memcached on one go
+func WithWriteLimit(limit int) Option {
+	return func(opts *memcacheOptions) {
+		opts.writeLimit = limit
 	}
 }

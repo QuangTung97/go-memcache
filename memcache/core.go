@@ -19,7 +19,7 @@ type coreConnection struct {
 }
 
 func newCoreConnection(nc netconn.NetConn, options *memcacheOptions) *coreConnection {
-	cmdSender := newSender(nc, 7)
+	cmdSender := newSender(nc, 7, options.writeLimit)
 
 	c := &coreConnection{
 		responseReader: newResponseReader(),
