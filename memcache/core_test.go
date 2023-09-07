@@ -164,6 +164,10 @@ func TestCommandListReader(t *testing.T) {
 	t.Run("normal", func(t *testing.T) {
 		var buf bytes.Buffer
 		s := newSender(newNetConnForTest(&buf), 8, 1000)
+		t.Cleanup(func() {
+			closeAndWaitSendJob(s)
+		})
+
 		r := newCmdListReader(s)
 
 		cmd1 := newCommandFromString("mg key01 v\r\n")

@@ -58,9 +58,6 @@ func TestSender_Publish(t *testing.T) {
 func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8, 1000)
-	t.Cleanup(func() {
-		closeAndWaitSendJob(s)
-	})
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -85,6 +82,8 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	wg.Wait()
+
+	closeAndWaitSendJob(s)
 
 	cmdList := make([]*commandData, 10)
 	n := s.readSentCommands(cmdList)
@@ -322,6 +321,9 @@ func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
 	}
 
 	s := newSender(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer1}, 8, 1000)
+	t.Cleanup(func() {
+		closeAndWaitSendJob(s)
+	})
 
 	s.shutdown()
 
