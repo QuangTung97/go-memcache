@@ -90,12 +90,27 @@ func (c *coreConnection) recvSingleCommandData() error {
 	return nil
 }
 
+type increaseReadCount struct {
+	increased bool
+}
+
+func (i *increaseReadCount) apply(c *coreConnection, current *commandData) {
+	if i.increased {
+		return
+	}
+	i.increased = true
+	c.sender.selector.addReadCount(uint64(current.cmdCount))
+}
+
 func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) error {
-	increased := false
+	var inc increaseReadCount
+
 	for {
 		// Read from response reader
 		ok := c.responseReader.readNextData()
 		if ok {
+			inc.apply(c, current)
+
 			if c.responseReader.hasError() != nil {
 				err := c.responseReader.hasError()
 				return current.conn.setLastErrorAndClose(err)
@@ -104,13 +119,11 @@ func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) e
 		}
 
 		n, err := current.conn.readData(c.msgData)
+
+		inc.apply(c, current)
+
 		if err != nil {
 			return err
-		}
-
-		if !increased {
-			increased = true
-			c.sender.selector.addReadCount(uint64(current.cmdCount))
 		}
 
 		c.responseReader.recv(c.msgData[:n])
