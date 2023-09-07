@@ -9,58 +9,122 @@ type inputSelector struct {
 	sendBuf      *sendBuffer
 	writeLimiter connWriteLimiter
 
-	remaining *commandData
+	isWaiting bool
+
+	inputList   selectorCommandList
+	longCmdList selectorCommandList
+}
+
+type selectorCommandList struct {
+	head *commandData
+	last **commandData
+}
+
+func initSelectorCommandList(l *selectorCommandList) {
+	l.head = nil
+	l.last = &l.head
+}
+
+func (l *selectorCommandList) append(inputCmd *commandData) {
+	*l.last = inputCmd
+	next := inputCmd
+	for next != nil {
+		l.last = &next.link
+		next = next.link
+	}
+}
+
+func (l *selectorCommandList) removeFirst() {
+	l.head = l.head.link
+	if l.head == nil {
+		l.last = &l.head
+	}
 }
 
 func initInputSelector(s *inputSelector, sendBuf *sendBuffer, limit int) {
 	s.sendBuf = sendBuf
 	initConnWriteLimiter(&s.writeLimiter, limit)
+
+	initSelectorCommandList(&s.inputList)
+	initSelectorCommandList(&s.longCmdList)
 }
 
-func (s *inputSelector) traverseCommandList(
-	next *commandData, result []*commandData,
-) (newResult []*commandData, allData bool) {
-	waiting := true
-	for next != nil {
-		writeCount := uint64(next.cmdCount)
-
-		if writeCount <= s.writeLimiter.writeLimit && !s.writeLimiter.allowMoreWrite(writeCount, waiting) {
-			s.remaining = next
-			return result, false
-		}
-		s.writeLimiter.addWriteCount(writeCount)
-
-		waiting = false
-
-		result = append(result, next)
-		next = next.link
-	}
-	return result, true
+type getNextCommandStatus struct {
+	allowMore  bool
+	hasSibling bool
 }
 
-func (s *inputSelector) linkRemainingWithInput(inputCmdList *commandData) *commandData {
-	if s.remaining != nil {
-		next := s.remaining
-		s.remaining = nil
-
-		last := next
-		for last.link != nil {
-			last = last.link
+func (s *inputSelector) getNextCommand(
+	cmdList *selectorCommandList, result []*commandData,
+) (newResult []*commandData, status getNextCommandStatus) {
+	if cmdList.head == nil {
+		return result, getNextCommandStatus{
+			allowMore: true,
 		}
-		last.link = inputCmdList
-		return next
 	}
-	return inputCmdList
+
+	cmd := cmdList.head
+
+	writeCount := uint64(cmd.cmdCount)
+
+	if writeCount <= s.writeLimiter.writeLimit && !s.writeLimiter.allowMoreWrite(writeCount, s.isWaiting) {
+		return result, getNextCommandStatus{}
+	}
+
+	s.writeLimiter.addWriteCount(writeCount)
+	s.isWaiting = false
+
+	cmdList.removeFirst()
+	cmd.link = nil
+
+	result = append(result, cmd)
+
+	var hasSibling bool
+	if cmd.sibling != nil {
+		hasSibling = true
+		sibling := cmd.sibling
+		s.longCmdList.append(sibling)
+		cmd.sibling = nil
+	}
+
+	return result, getNextCommandStatus{
+		allowMore:  true,
+		hasSibling: hasSibling,
+	}
+}
+
+func (s *inputSelector) isEmpty() bool {
+	return s.inputList.head == nil && s.longCmdList.head == nil
 }
 
 func (s *inputSelector) readCommands(placeholder []*commandData) ([]*commandData, bool) {
-	waiting := s.remaining == nil
-	cmdList, closed := s.sendBuf.popAll(waiting)
+	popWaiting := s.isEmpty()
+	inputCmdList, closed := s.sendBuf.popAll(popWaiting)
 
-	next := s.linkRemainingWithInput(cmdList)
-	result, allData := s.traverseCommandList(next, placeholder)
+	s.inputList.append(inputCmdList)
 
-	if !allData {
+	result := placeholder
+
+	s.isWaiting = true
+
+	for !s.isEmpty() {
+		var status getNextCommandStatus
+
+		result, status = s.getNextCommand(&s.inputList, result)
+		if !status.allowMore {
+			break
+		}
+		if status.hasSibling {
+			continue
+		}
+
+		result, status = s.getNextCommand(&s.longCmdList, result)
+		if !status.allowMore {
+			break
+		}
+	}
+
+	if !s.isEmpty() {
 		closed = false
 	}
 

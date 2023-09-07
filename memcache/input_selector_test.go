@@ -23,6 +23,29 @@ func newCommandWithCount(s string, count int) *commandData {
 	return cmd
 }
 
+func newCommandChain(list ...string) *commandData {
+	var last *commandData
+	var first *commandData
+	for _, s := range list {
+		cmd := newCommandFromString(s)
+		if last == nil {
+			first = cmd
+		} else {
+			last.sibling = cmd
+		}
+		last = cmd
+	}
+	return first
+}
+
+func TestNewCommandChain(t *testing.T) {
+	chain := newCommandChain("mg key01", "mg key02", "mg key03")
+	assert.Equal(t, "mg key01", string(chain.requestData))
+	assert.Equal(t, "mg key02", string(chain.sibling.requestData))
+	assert.Equal(t, "mg key03", string(chain.sibling.sibling.requestData))
+	assert.Nil(t, chain.sibling.sibling.sibling)
+}
+
 func TestInputSelector(t *testing.T) {
 	t.Run("single command", func(t *testing.T) {
 		sendBuf := newSendBuffer()
@@ -265,6 +288,101 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, false, closed)
 		assert.Equal(t, 1, len(cmds))
 		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+	})
+
+	t.Run("with sibling total 2 commands", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandChain("mg key01", "mg key02"))
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 2, len(cmds))
+
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+		assert.Nil(t, cmds[0].sibling)
+		assert.Nil(t, cmds[0].link)
+
+		assert.Equal(t, "mg key02", string(cmds[1].requestData))
+		assert.Nil(t, cmds[1].sibling)
+		assert.Nil(t, cmds[1].link)
+	})
+
+	t.Run("with sibling total 4 commands", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandChain("mg key01", "mg key02"))
+		sendBuf.push(newCommandChain("mg key03", "mg key04"))
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+		assert.Equal(t, "mg key03", string(cmds[1].requestData))
+		assert.Equal(t, "mg key02", string(cmds[2].requestData))
+
+		s.addReadCount(3)
+
+		cmds, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 1, len(cmds))
+
+		assert.Equal(t, "mg key04", string(cmds[0].requestData))
+	})
+
+	t.Run("with multiple commands with multiple siblings", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandChain("mg key01", "mg key02"))
+		sendBuf.push(newCommandChain("mg key03", "mg key04", "mg key05"))
+		sendBuf.push(newCommandChain("mg key06"))
+		sendBuf.push(newCommandChain("mg key07"))
+		sendBuf.push(newCommandChain("mg key08"))
+		sendBuf.push(newCommandChain("mg key09"))
+		sendBuf.push(newCommandChain("mg key10"))
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+		assert.Equal(t, "mg key03", string(cmds[1].requestData))
+		assert.Equal(t, "mg key06", string(cmds[2].requestData))
+
+		s.addReadCount(3)
+
+		cmds, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+
+		assert.Equal(t, "mg key07", string(cmds[0].requestData))
+		assert.Equal(t, "mg key02", string(cmds[1].requestData))
+		assert.Equal(t, "mg key08", string(cmds[2].requestData))
+
+		s.addReadCount(3)
+
+		cmds, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+
+		assert.Equal(t, "mg key09", string(cmds[0].requestData))
+		assert.Equal(t, "mg key04", string(cmds[1].requestData))
+		assert.Equal(t, "mg key10", string(cmds[2].requestData))
+
+		s.addReadCount(3)
+
+		sendBuf.push(newCommandChain("mg key11"))
+
+		cmds, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 2, len(cmds))
+
+		assert.Equal(t, "mg key11", string(cmds[0].requestData))
+		assert.Equal(t, "mg key05", string(cmds[1].requestData))
 	})
 }
 
