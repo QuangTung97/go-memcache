@@ -35,7 +35,7 @@ type connTimeout interface {
 }
 
 type timeoutWriter struct {
-	FlushWriter
+	writer       io.Writer
 	timeout      connTimeout
 	writeTimeout time.Duration
 }
@@ -45,7 +45,7 @@ func (w *timeoutWriter) Write(p []byte) (n int, err error) {
 	if err != nil {
 		return 0, err
 	}
-	return w.FlushWriter.Write(p)
+	return w.writer.Write(p)
 }
 
 type timeoutReader struct {
@@ -116,13 +116,13 @@ func DialNewConn(addr string, options ...Option) (NetConn, error) {
 		}
 	}
 
-	var writer FlushWriter = bufio.NewWriterSize(nc, conf.bufferSize)
-
-	writer = &timeoutWriter{
-		FlushWriter:  writer,
+	connWriter := &timeoutWriter{
+		writer:       nc,
 		timeout:      nc,
 		writeTimeout: conf.writeTimeout,
 	}
+
+	writer := bufio.NewWriterSize(connWriter, conf.bufferSize)
 
 	var reader io.ReadCloser = &timeoutReader{
 		ReadCloser:  nc,

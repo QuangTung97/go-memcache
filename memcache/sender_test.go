@@ -32,12 +32,19 @@ func newNetConnForTest(buf *bytes.Buffer) netconn.NetConn {
 	}
 }
 
+func closeAndWaitSendJob(s *sender) {
+	s.closeSendJob()
+	s.waitForClosingSendJob()
+}
+
 func TestSender_Publish(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8, 1000)
 
 	s.publish(newCommandFromString("mg key01 v\r\n"))
 	s.publish(newCommandFromString("mg key02 v k\r\n"))
+
+	closeAndWaitSendJob(s)
 
 	assert.Equal(t, "mg key01 v\r\nmg key02 v k\r\n", buf.String())
 
@@ -51,8 +58,9 @@ func TestSender_Publish(t *testing.T) {
 func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8, 1000)
-
-	s.connMut.Lock()
+	t.Cleanup(func() {
+		closeAndWaitSendJob(s)
+	})
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -76,7 +84,6 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	s.connMut.Unlock()
 	wg.Wait()
 
 	cmdList := make([]*commandData, 10)
@@ -115,7 +122,7 @@ func stringsToMap(list []string) map[string]struct{} {
 //revive:disable-next-line:cognitive-complexity
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 2, 1000)
+	s := newSender(newNetConnForTest(&buf), 2, 1_000)
 
 	const numRounds = 200000
 
@@ -147,10 +154,13 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 		for total < 2*numRounds {
 			n := s.readSentCommands(cmdList)
 			total += n
+			s.selector.addReadCount(uint64(n))
 		}
 	}()
 
 	wg.Wait()
+
+	closeAndWaitSendJob(s)
 
 	aKeys := 0
 	bKeys := 0
@@ -186,6 +196,9 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8, 1000)
+	t.Cleanup(func() {
+		closeAndWaitSendJob(s)
+	})
 
 	var ended uint32
 	go func() {
@@ -215,6 +228,8 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 
 	s.publish(cmd1)
 	s.publish(cmd2)
+
+	closeAndWaitSendJob(s)
 
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
@@ -246,7 +261,9 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 	s.publish(cmd1)
 	s.publish(cmd2)
 
-	assert.Equal(t, 1, len(writer.WriteCalls()))
+	closeAndWaitSendJob(s)
+
+	assert.Greater(t, len(writer.WriteCalls()), 1)
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
 	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastErrorInternal())
@@ -285,6 +302,8 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 
 	cmd2 := newCommandFromString("mg key02 v\r\n")
 	s.publish(cmd2)
+
+	closeAndWaitSendJob(s)
 
 	cmdList := make([]*commandData, 10)
 	n := s.readSentCommands(cmdList)

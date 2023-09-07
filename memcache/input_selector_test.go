@@ -217,6 +217,92 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, "mg key04", string(cmds[0].requestData))
 		assert.Equal(t, "mg key05", string(cmds[1].requestData))
 	})
+
+	t.Run("with remaining", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandWithCount("mg key01", 1))
+		sendBuf.push(newCommandWithCount("mg key02", 1))
+		sendBuf.push(newCommandWithCount("mg key03", 1))
+		sendBuf.push(newCommandWithCount("mg key04", 1))
+		sendBuf.push(newCommandWithCount("mg key05", 1))
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+		assert.Equal(t, "mg key02", string(cmds[1].requestData))
+		assert.Equal(t, "mg key03", string(cmds[2].requestData))
+
+		s.addReadCount(3)
+
+		cmds, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 2, len(cmds))
+		assert.Equal(t, "mg key04", string(cmds[0].requestData))
+		assert.Equal(t, "mg key05", string(cmds[1].requestData))
+
+		s.addReadCount(2)
+
+		sendBuf.push(newCommandWithCount("mg key06", 1))
+		sendBuf.push(newCommandWithCount("mg key07", 1))
+
+		cmds, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 2, len(cmds))
+		assert.Equal(t, "mg key06", string(cmds[0].requestData))
+		assert.Equal(t, "mg key07", string(cmds[1].requestData))
+	})
+
+	t.Run("concurrent", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		const numLoops = 10_000
+
+		go func() {
+			defer wg.Done()
+
+			for i := 0; i < numLoops; i++ {
+				sendBuf.push(newCommandWithCount("mg key01", 1))
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			for i := 0; i < numLoops; i++ {
+				sendBuf.push(newCommandWithCount("mg key02", 1))
+			}
+		}()
+
+		total := 0
+		readFinish := make(chan struct{})
+		go func() {
+			defer close(readFinish)
+
+			for {
+				cmds, closed := s.readCommands(nil)
+
+				total += len(cmds)
+				s.addReadCount(uint64(len(cmds)))
+
+				if closed {
+					return
+				}
+			}
+		}()
+
+		wg.Wait()
+		sendBuf.close()
+
+		<-readFinish
+		assert.Equal(t, 2*numLoops, total)
+	})
 }
 
 func newConnWriteLimiter(limit int) *connWriteLimiter {

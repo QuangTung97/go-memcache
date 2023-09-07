@@ -91,6 +91,7 @@ func (c *coreConnection) recvSingleCommandData() error {
 }
 
 func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) error {
+	increased := false
 	for {
 		// Read from response reader
 		ok := c.responseReader.readNextData()
@@ -105,6 +106,11 @@ func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) e
 		n, err := current.conn.readData(c.msgData)
 		if err != nil {
 			return err
+		}
+
+		if !increased {
+			increased = true
+			c.sender.selector.addReadCount(uint64(current.cmdCount))
 		}
 
 		c.responseReader.recv(c.msgData[:n])

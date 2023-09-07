@@ -118,4 +118,30 @@ func TestSendBuffer(t *testing.T) {
 		assert.Equal(t, false, closed)
 		assert.Nil(t, cmdList)
 	})
+
+	t.Run("pop all do wait on closing", func(t *testing.T) {
+		b := newSendBuffer()
+
+		var popped atomic.Bool
+		closeCh := make(chan struct{})
+
+		var cmdList *commandData
+		var popClosed bool
+
+		go func() {
+			cmdList, popClosed = b.popAll(true)
+			popped.Store(true)
+			close(closeCh)
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+		assert.Equal(t, false, popped.Load())
+
+		b.close()
+
+		<-closeCh
+
+		assert.Nil(t, cmdList)
+		assert.Equal(t, true, popClosed)
+	})
 }

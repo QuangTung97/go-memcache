@@ -40,12 +40,15 @@ func (s *inputSelector) traverseCommandList(
 
 func (s *inputSelector) linkRemainingWithInput(inputCmdList *commandData) *commandData {
 	if s.remaining != nil {
-		last := s.remaining
+		next := s.remaining
+		s.remaining = nil
+
+		last := next
 		for last.link != nil {
 			last = last.link
 		}
 		last.link = inputCmdList
-		return s.remaining
+		return next
 	}
 	return inputCmdList
 }

@@ -25,6 +25,7 @@ type sender struct {
 	closed      bool
 	// ---- end connMut protection ----
 
+	finishCh chan struct{}
 	sendBuf  sendBuffer
 	selector inputSelector
 	recv     recvBuffer
@@ -205,6 +206,7 @@ func newSender(nc netconn.NetConn, bufSizeLog int, writeLimit int) *sender {
 
 	initRecvBuffer(&s.recv, bufSizeLog+1)
 
+	s.finishCh = make(chan struct{})
 	go s.runSenderJob()
 
 	return s
@@ -266,7 +268,10 @@ func (s *sender) publish(cmd *commandData) {
 }
 
 func (s *sender) runSenderJob() {
-	defer s.recv.closeBuffer()
+	defer func() {
+		s.recv.closeBuffer()
+		close(s.finishCh)
+	}()
 
 	for {
 		closed := s.sendToWriter()
@@ -302,6 +307,10 @@ func (s *sender) resetNetConn(nc netconn.NetConn) {
 
 func (s *sender) closeSendJob() {
 	s.sendBuf.close()
+}
+
+func (s *sender) waitForClosingSendJob() {
+	<-s.finishCh
 }
 
 func (s *sender) shutdown() {
