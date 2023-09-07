@@ -27,11 +27,14 @@ func (l *connWriteLimiter) addWriteCount(num uint64) {
 	l.cmdWriteCount += num
 }
 
-func (l *connWriteLimiter) allowMoreWrite(num uint64) {
+func (l *connWriteLimiter) allowMoreWrite(num uint64, waiting bool) bool {
 	newWriteCount := l.cmdWriteCount + num
 
 	if newWriteCount <= l.cmdReadCount.Load()+l.writeLimit {
-		return
+		return true
+	}
+	if !waiting {
+		return false
 	}
 
 	l.readMut.Lock()
@@ -39,6 +42,8 @@ func (l *connWriteLimiter) allowMoreWrite(num uint64) {
 		l.readCond.Wait()
 	}
 	l.readMut.Unlock()
+
+	return true
 }
 
 func (l *connWriteLimiter) addReadCount(num uint64) {
