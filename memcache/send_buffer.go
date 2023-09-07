@@ -30,13 +30,17 @@ func (b *sendBuffer) push(cmd *commandData) (closed bool) {
 		return true
 	}
 
+	needSignal := b.firstCmd == nil
+
 	cmd.link = nil
 	*b.nextCmdPtr = cmd
 	b.nextCmdPtr = &cmd.link
 
 	b.mut.Unlock()
 
-	b.cond.Signal()
+	if needSignal {
+		b.cond.Signal()
+	}
 
 	return false
 }

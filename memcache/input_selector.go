@@ -6,7 +6,65 @@ import (
 )
 
 type inputSelector struct {
+	sendBuf      *sendBuffer
+	writeLimiter connWriteLimiter
+
+	remaining *commandData
 }
+
+func initInputSelector(s *inputSelector, sendBuf *sendBuffer, limit int) {
+	s.sendBuf = sendBuf
+	initConnWriteLimiter(&s.writeLimiter, limit)
+}
+
+func (s *inputSelector) traverseCommandList(
+	next *commandData, result []*commandData,
+) []*commandData {
+	waiting := true
+	for next != nil {
+		writeCount := uint64(next.cmdCount)
+
+		if !s.writeLimiter.allowMoreWrite(writeCount, waiting) {
+			s.remaining = next
+			return result
+		}
+		s.writeLimiter.addWriteCount(writeCount)
+
+		waiting = false
+
+		result = append(result, next)
+		next = next.link
+	}
+	return result
+}
+
+func (s *inputSelector) linkRemainingWithInput(inputCmdList *commandData) *commandData {
+	if s.remaining != nil {
+		last := s.remaining
+		for last.link != nil {
+			last = last.link
+		}
+		last.link = inputCmdList
+		return s.remaining
+	}
+	return inputCmdList
+}
+
+func (s *inputSelector) readCommands(placeholder []*commandData) ([]*commandData, bool) {
+	waiting := s.remaining == nil
+	cmdList, closed := s.sendBuf.popAll(waiting)
+
+	next := s.linkRemainingWithInput(cmdList)
+	return s.traverseCommandList(next, placeholder), closed
+}
+
+func (s *inputSelector) addReadCount(num uint64) {
+	s.writeLimiter.addReadCount(num)
+}
+
+// ==================================
+// Conn Write Limiter
+// ==================================
 
 func initConnWriteLimiter(l *connWriteLimiter, limit int) {
 	l.writeLimit = uint64(limit)
