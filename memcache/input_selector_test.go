@@ -254,55 +254,55 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, "mg key06", string(cmds[0].requestData))
 		assert.Equal(t, "mg key07", string(cmds[1].requestData))
 	})
+}
 
-	t.Run("concurrent", func(t *testing.T) {
-		sendBuf := newSendBuffer()
-		s := newInputSelector(sendBuf, 3)
+func TestInputSelector_Concurrent(t *testing.T) {
+	sendBuf := newSendBuffer()
+	s := newInputSelector(sendBuf, 3)
 
-		var wg sync.WaitGroup
-		wg.Add(2)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-		const numLoops = 10_000
+	const numLoops = 10_000
 
-		go func() {
-			defer wg.Done()
+	go func() {
+		defer wg.Done()
 
-			for i := 0; i < numLoops; i++ {
-				sendBuf.push(newCommandWithCount("mg key01", 1))
+		for i := 0; i < numLoops; i++ {
+			sendBuf.push(newCommandWithCount("mg key01", 1))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numLoops; i++ {
+			sendBuf.push(newCommandWithCount("mg key02", 1))
+		}
+	}()
+
+	total := 0
+	readFinish := make(chan struct{})
+	go func() {
+		defer close(readFinish)
+
+		for {
+			cmds, closed := s.readCommands(nil)
+
+			total += len(cmds)
+			s.addReadCount(uint64(len(cmds)))
+
+			if closed {
+				return
 			}
-		}()
+		}
+	}()
 
-		go func() {
-			defer wg.Done()
+	wg.Wait()
+	sendBuf.close()
 
-			for i := 0; i < numLoops; i++ {
-				sendBuf.push(newCommandWithCount("mg key02", 1))
-			}
-		}()
-
-		total := 0
-		readFinish := make(chan struct{})
-		go func() {
-			defer close(readFinish)
-
-			for {
-				cmds, closed := s.readCommands(nil)
-
-				total += len(cmds)
-				s.addReadCount(uint64(len(cmds)))
-
-				if closed {
-					return
-				}
-			}
-		}()
-
-		wg.Wait()
-		sendBuf.close()
-
-		<-readFinish
-		assert.Equal(t, 2*numLoops, total)
-	})
+	<-readFinish
+	assert.Equal(t, 2*numLoops, total)
 }
 
 func newConnWriteLimiter(limit int) *connWriteLimiter {
