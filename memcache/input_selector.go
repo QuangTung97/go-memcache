@@ -24,7 +24,7 @@ func (s *inputSelector) traverseCommandList(
 	for next != nil {
 		writeCount := uint64(next.cmdCount)
 
-		if !s.writeLimiter.allowMoreWrite(writeCount, waiting) {
+		if writeCount <= s.writeLimiter.writeLimit && !s.writeLimiter.allowMoreWrite(writeCount, waiting) {
 			s.remaining = next
 			return result, false
 		}

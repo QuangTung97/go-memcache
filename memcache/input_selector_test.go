@@ -254,6 +254,18 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, "mg key06", string(cmds[0].requestData))
 		assert.Equal(t, "mg key07", string(cmds[1].requestData))
 	})
+
+	t.Run("should not wait for first command with cmd count > write limit", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandWithCount("mg key01", 4))
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 1, len(cmds))
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+	})
 }
 
 func TestInputSelector_Concurrent(t *testing.T) {
