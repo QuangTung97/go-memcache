@@ -9,8 +9,6 @@ type inputSelector struct {
 	sendBuf      *sendBuffer
 	writeLimiter connWriteLimiter
 
-	isWaiting bool
-
 	inputList   selectorCommandList
 	longCmdList selectorCommandList
 }
@@ -55,7 +53,7 @@ type getNextCommandStatus struct {
 }
 
 func (s *inputSelector) getNextCommand(
-	cmdList *selectorCommandList, result []*commandData,
+	cmdList *selectorCommandList, result []*commandData, justWaited *bool,
 ) (newResult []*commandData, status getNextCommandStatus) {
 	if cmdList.head == nil {
 		return result, getNextCommandStatus{
@@ -64,15 +62,21 @@ func (s *inputSelector) getNextCommand(
 	}
 
 	cmd := cmdList.head
-
 	writeCount := uint64(cmd.cmdCount)
 
-	if writeCount <= s.writeLimiter.writeLimit && !s.writeLimiter.allowMoreWrite(writeCount, s.isWaiting) {
-		return result, getNextCommandStatus{}
+	if writeCount <= s.writeLimiter.writeLimit {
+		doWait := len(result) == 0
+		if !s.writeLimiter.allowMoreWrite(writeCount, doWait) {
+			return result, getNextCommandStatus{
+				allowMore: false,
+			}
+		}
+		if s.writeLimiter.justWaited {
+			*justWaited = true
+		}
 	}
 
 	s.writeLimiter.addWriteCount(writeCount)
-	s.isWaiting = false
 
 	cmdList.removeFirst()
 	cmd.link = nil
@@ -97,38 +101,50 @@ func (s *inputSelector) isEmpty() bool {
 	return s.inputList.head == nil && s.longCmdList.head == nil
 }
 
-func (s *inputSelector) readCommands(placeholder []*commandData) ([]*commandData, bool) {
-	popWaiting := s.isEmpty()
+type popAllStatus struct {
+	justWaited bool
+	closed     bool
+}
+
+func (s *inputSelector) popAllThenRead(result []*commandData) ([]*commandData, popAllStatus) {
+	popWaiting := s.isEmpty() && len(result) == 0
 	inputCmdList, closed := s.sendBuf.popAll(popWaiting)
 
 	s.inputList.append(inputCmdList)
 
-	result := placeholder
-
-	s.isWaiting = true
-
+	var justWaited bool
+	var status getNextCommandStatus
 	for !s.isEmpty() {
-		var status getNextCommandStatus
-
-		result, status = s.getNextCommand(&s.inputList, result)
+		result, status = s.getNextCommand(&s.inputList, result, &justWaited)
 		if !status.allowMore {
-			break
+			return result, popAllStatus{}
 		}
 		if status.hasSibling {
 			continue
 		}
 
-		result, status = s.getNextCommand(&s.longCmdList, result)
+		result, status = s.getNextCommand(&s.longCmdList, result, &justWaited)
 		if !status.allowMore {
-			break
+			return result, popAllStatus{}
 		}
 	}
 
-	if !s.isEmpty() {
-		closed = false
+	return result, popAllStatus{
+		closed:     closed,
+		justWaited: justWaited,
 	}
+}
 
-	return result, closed
+func (s *inputSelector) readCommands(placeholder []*commandData) ([]*commandData, bool) {
+	result := placeholder
+	for {
+		var status popAllStatus
+		result, status = s.popAllThenRead(result)
+		if status.justWaited {
+			continue
+		}
+		return result, status.closed
+	}
 }
 
 func (s *inputSelector) addReadCount(num uint64) {
@@ -152,6 +168,8 @@ type connWriteLimiter struct {
 	readMut      sync.Mutex
 	readCond     *sync.Cond
 	cmdReadCount atomic.Uint64
+
+	justWaited bool
 }
 
 func (l *connWriteLimiter) addWriteCount(num uint64) {
@@ -160,6 +178,7 @@ func (l *connWriteLimiter) addWriteCount(num uint64) {
 
 //revive:disable-next-line:flag-parameter
 func (l *connWriteLimiter) allowMoreWrite(num uint64, waiting bool) bool {
+	l.justWaited = false
 	newWriteCount := l.cmdWriteCount + num
 
 	if newWriteCount <= l.cmdReadCount.Load()+l.writeLimit {
@@ -171,6 +190,7 @@ func (l *connWriteLimiter) allowMoreWrite(num uint64, waiting bool) bool {
 
 	l.readMut.Lock()
 	for newWriteCount > l.cmdReadCount.Load()+l.writeLimit {
+		l.justWaited = true
 		l.readCond.Wait()
 	}
 	l.readMut.Unlock()

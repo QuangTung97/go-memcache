@@ -201,6 +201,47 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, "mg key05", string(cmds[1].requestData))
 	})
 
+	t.Run("waiting on write limiter, new command is pushed in that time", func(t *testing.T) {
+		sendBuf := newSendBuffer()
+		s := newInputSelector(sendBuf, 3)
+
+		sendBuf.push(newCommandWithCount("mg key01", 1))
+		sendBuf.push(newCommandWithCount("mg key02", 1))
+		sendBuf.push(newCommandWithCount("mg key03", 1))
+		sendBuf.push(newCommandWithCount("mg key04", 1))
+		sendBuf.push(newCommandWithCount("mg key05", 1))
+
+		cmds, closed := s.readCommands(nil)
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+		assert.Equal(t, "mg key01", string(cmds[0].requestData))
+		assert.Equal(t, "mg key02", string(cmds[1].requestData))
+		assert.Equal(t, "mg key03", string(cmds[2].requestData))
+
+		var finished atomic.Bool
+		finishCh := make(chan struct{})
+		go func() {
+			cmds, closed = s.readCommands(nil)
+			finished.Store(true)
+			close(finishCh)
+		}()
+
+		time.Sleep(5 * time.Millisecond)
+		assert.Equal(t, false, finished.Load())
+
+		sendBuf.push(newCommandWithCount("mg key06", 1))
+
+		s.addReadCount(3)
+
+		<-finishCh
+
+		assert.Equal(t, false, closed)
+		assert.Equal(t, 3, len(cmds))
+		assert.Equal(t, "mg key04", string(cmds[0].requestData))
+		assert.Equal(t, "mg key05", string(cmds[1].requestData))
+		assert.Equal(t, "mg key06", string(cmds[2].requestData))
+	})
+
 	t.Run("do close after push", func(t *testing.T) {
 		sendBuf := newSendBuffer()
 		s := newInputSelector(sendBuf, 3)
@@ -449,6 +490,7 @@ func TestConnWriteLimiter(t *testing.T) {
 
 		allow := l.allowMoreWrite(1, true)
 		assert.Equal(t, true, allow)
+		assert.Equal(t, false, l.justWaited)
 
 		closed := make(chan struct{})
 		var finished atomic.Bool
@@ -495,11 +537,14 @@ func TestConnWriteLimiter(t *testing.T) {
 		<-closed
 
 		assert.Equal(t, true, allow)
+		assert.Equal(t, true, l.justWaited)
 
 		l.addWriteCount(4) // write: 6, read: 3
 		l.addReadCount(2)  // write: 6, read: 5
 
 		l.allowMoreWrite(2, true)
+
+		assert.Equal(t, false, l.justWaited)
 	})
 
 	t.Run("no wait", func(t *testing.T) {
