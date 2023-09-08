@@ -128,10 +128,15 @@ type connRecorder struct {
 	data []byte
 	net.Conn
 
-	writeErr error
+	writeErr  error
+	startChan chan struct{}
 }
 
 func (c *connRecorder) Write(b []byte) (n int, err error) {
+	if c.startChan != nil {
+		<-c.startChan
+	}
+
 	c.data = append(c.data, b...)
 	if c.writeErr != nil {
 		return 0, c.writeErr
@@ -454,4 +459,97 @@ func TestClient_Connect_To_Memcached_Not_Need_Password(t *testing.T) {
 		Type: MGetResponseTypeVA,
 		Data: []byte("user pass"),
 	}, resp)
+}
+
+func newDialFuncWithRecorder() (netconn.DialFunc, *connRecorder, chan struct{}) {
+	startCh := make(chan struct{}, 100)
+	recorder := &connRecorder{
+		startChan: startCh,
+	}
+	dialFunc := func(network, address string, timeout time.Duration) (net.Conn, error) {
+		conn, err := net.Dial(network, address)
+		if err != nil {
+			panic(err)
+		}
+		recorder.Conn = conn
+		return recorder, nil
+	}
+	return dialFunc, recorder, startCh
+}
+
+func TestClient__With_WriteLimit__And_Max_Command_Count(t *testing.T) {
+	dialFunc, recorder, startChan := newDialFuncWithRecorder()
+
+	c, err := New("localhost:11211", 1,
+		WithDialFunc(dialFunc),
+		WithWriteLimit(4),
+		WithMaxCommandsPerBatch(2),
+	)
+	assert.Equal(t, nil, err)
+
+	t.Cleanup(func() {
+		_ = c.Close()
+	})
+
+	p := c.Pipeline()
+	defer p.Finish()
+
+	startChan <- struct{}{}
+	pipelineFlushAll(p)
+
+	fn01 := p.MSet("key01", []byte("some value 01"), MSetOptions{})
+	fn02 := p.MGet("key01", MGetOptions{})
+
+	fn03 := p.MSet("key02", []byte("data 02"), MSetOptions{})
+	fn04 := p.MSet("key03", []byte("data 03"), MSetOptions{})
+
+	fn05 := p.MSet("key04", []byte("data 04"), MSetOptions{})
+
+	pipe2 := c.Pipeline()
+	defer pipe2.Finish()
+
+	fn06 := pipe2.MSet("key05", []byte("data value 05"), MSetOptions{})
+	fn07 := pipe2.MGet("key05", MGetOptions{})
+
+	p.Execute()
+	time.Sleep(5 * time.Millisecond)
+	pipe2.Execute()
+	close(startChan)
+
+	_, err = fn01()
+	assert.Equal(t, nil, err)
+
+	setResp, err := fn06()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, setResp)
+
+	resp, err := fn02()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("some value 01"),
+	}, resp)
+
+	_, _ = fn03()
+	_, _ = fn04()
+	_, _ = fn05()
+
+	resp, err = fn07()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("data value 05"),
+	}, resp)
+
+	assert.Equal(t,
+		"flush_all\r\n"+
+			"ms key01 13\r\nsome value 01\r\nmg key01 v\r\n"+
+			"ms key02 7\r\ndata 02\r\n"+
+			"ms key03 7\r\ndata 03\r\n"+
+			"ms key05 13\r\ndata value 05\r\n"+
+			"mg key05 v\r\n"+
+			"ms key04 7\r\ndata 04\r\n",
+		string(recorder.data))
 }

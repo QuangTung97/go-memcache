@@ -192,6 +192,79 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 	assert.Equal(t, numRounds, bKeys)
 }
 
+func TestSender_Publish_Stress_Test__With_Write_Limit(t *testing.T) {
+	var buf bytes.Buffer
+	s := newSender(newNetConnForTest(&buf), 2, 3)
+
+	const numRounds = 200000
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numRounds; i++ {
+			key := fmt.Sprintf("A:KEY:%09d", i)
+			s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numRounds; i++ {
+			key := fmt.Sprintf("B:KEY:%09d", i)
+			s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		cmdList := make([]*commandData, 29)
+		total := 0
+		for total < 2*numRounds {
+			n := s.readSentCommands(cmdList)
+			total += n
+			s.selector.addReadCount(uint64(n))
+		}
+	}()
+
+	wg.Wait()
+
+	closeAndWaitSendJob(s)
+
+	aKeys := 0
+	bKeys := 0
+
+	scanner := bufio.NewScanner(&buf)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		key := strings.Fields(line)[1]
+		strList := strings.Split(key, ":")
+		prefix := strList[0]
+		num := strList[2]
+
+		if prefix == "A" {
+			if num != fmt.Sprintf("%09d", aKeys) {
+				panic("Missing key")
+			}
+			aKeys++
+		} else if prefix == "B" {
+			if num != fmt.Sprintf("%09d", bKeys) {
+				panic("Missing key")
+			}
+			bKeys++
+		} else {
+			panic("Invalid prefix")
+		}
+	}
+
+	assert.Equal(t, numRounds, aKeys)
+	assert.Equal(t, numRounds, bKeys)
+}
+
 func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 8, 1000)

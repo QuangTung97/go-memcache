@@ -221,6 +221,8 @@ func TestBuilder_With_Max_Count(t *testing.T) {
 
 		cmd := b.finish()
 
+		assert.Same(t, cmd, b.getCommandList())
+
 		assert.Equal(t, 2, cmd.cmdCount)
 		assert.Equal(t, "mg key01 v\r\nms key02 7\r\ndata 01\r\n", string(cmd.requestData))
 		assert.Equal(t, 1, cap(cmd.responseBinaries))
