@@ -1,8 +1,9 @@
 package memcache
 
 type cmdBuilder struct {
-	cmd       *commandData
-	mgetCount int
+	cmd         *commandData
+	maxCmdCount int
+	mgetCount   int
 }
 
 // MGetOptions ...
@@ -24,9 +25,10 @@ type MDelOptions struct {
 	TTL uint32 // only apply if I = true
 }
 
-func initCmdBuilder(b *cmdBuilder) {
+func initCmdBuilder(b *cmdBuilder, maxCmdCount int) {
 	b.cmd = newCommand()
 	b.mgetCount = 0
+	b.maxCmdCount = maxCmdCount
 }
 
 func appendNumber(data []byte, n uint64) []byte {
@@ -130,6 +132,12 @@ func (b *cmdBuilder) clearCmd() {
 	b.cmd = nil
 }
 
-func (b *cmdBuilder) getMgetCount() int {
-	return b.mgetCount
+func (b *cmdBuilder) internalResetMGetCount() {
+	b.cmd.responseBinaries = make([][]byte, 0, b.mgetCount)
+	b.mgetCount = 0
+}
+
+func (b *cmdBuilder) finish() *commandData {
+	b.internalResetMGetCount()
+	return b.cmd
 }

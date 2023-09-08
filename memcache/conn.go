@@ -11,6 +11,8 @@ type clientConn struct {
 	wg   sync.WaitGroup
 	core *coreConnection
 
+	maxCommandsPerBatch int
+
 	mut       sync.Mutex
 	closed    bool
 	closeChan chan struct{}
@@ -35,6 +37,8 @@ func newConn(addr string, options ...Option) *clientConn {
 	c := &clientConn{
 		core:      newCoreConnection(nc, opts),
 		closeChan: make(chan struct{}),
+
+		maxCommandsPerBatch: opts.maxCommandsPerBatch,
 	}
 
 	c.wg.Add(1)

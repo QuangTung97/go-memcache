@@ -46,7 +46,7 @@ func (p *Pipeline) newPipelineSession() *pipelineSession {
 
 		currentCmdList: make([]*pipelineCmd, 0, 32),
 	}
-	initCmdBuilder(&sess.builder)
+	initCmdBuilder(&sess.builder, p.c.maxCommandsPerBatch)
 	return sess
 }
 
@@ -147,8 +147,7 @@ func (s *pipelineSession) pushCommandsIfNotPublished() {
 	if !s.published {
 		s.published = true
 
-		builderCmd := s.builder.getCmd()
-		builderCmd.responseBinaries = make([][]byte, 0, s.builder.getMgetCount())
+		builderCmd := s.builder.finish()
 		s.pushCommands(builderCmd)
 	}
 }

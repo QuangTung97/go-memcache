@@ -13,6 +13,8 @@ type memcacheOptions struct {
 	bufferSize    int
 	writeLimit    int
 
+	maxCommandsPerBatch int
+
 	dialErrorLogger func(err error)
 
 	connOptions []netconn.Option
@@ -30,6 +32,8 @@ func computeOptions(options ...Option) *memcacheOptions {
 		retryDuration: 10 * time.Second,
 		bufferSize:    16 * 1024,
 		writeLimit:    500,
+
+		maxCommandsPerBatch: 100,
 
 		dialErrorLogger: func(err error) {
 			log.Println("[ERROR] Memcache dial error:", err)
@@ -88,5 +92,13 @@ func WithNetConnOptions(options ...netconn.Option) Option {
 func WithWriteLimit(limit int) Option {
 	return func(opts *memcacheOptions) {
 		opts.writeLimit = limit
+	}
+}
+
+// WithMaxCommandsPerBatch specifies the number of commands each batch will contain, if a pipeline has more command
+// than this value, it will be split to multiple commands to avoid starvation
+func WithMaxCommandsPerBatch(maxCommands int) Option {
+	return func(opts *memcacheOptions) {
+		opts.maxCommandsPerBatch = maxCommands
 	}
 }
