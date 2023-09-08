@@ -223,13 +223,19 @@ func TestClient_Two_Clients__Concurrent_Execute(t *testing.T) {
 	p2 := c2.Pipeline()
 	defer p2.Finish()
 
-	p1.MSet("key01", []byte("some value 01"), MSetOptions{})
+	fn1 := p1.MSet("key01", []byte("some value 01"), MSetOptions{})
 	fn2 := p2.MSet("key02", []byte("some value 02"), MSetOptions{})
 
 	p1.Execute()
 	p2.Execute()
 
-	_, _ = fn2()
+	resp, err := fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, resp)
+
+	resp, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, resp)
 
 	assert.Equal(t, "ms key01 13\r\nsome value 01\r\n", string(recorder1.data))
 	assert.Equal(t, "ms key02 13\r\nsome value 02\r\n", string(recorder2.data))
