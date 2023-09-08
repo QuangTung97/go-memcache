@@ -2,6 +2,9 @@ package memcache
 
 type cmdBuilder struct {
 	cmd         *commandData
+	cmdList     *commandData
+	lastPointer **commandData
+
 	maxCmdCount int
 	mgetCount   int
 }
@@ -27,6 +30,10 @@ type MDelOptions struct {
 
 func initCmdBuilder(b *cmdBuilder, maxCmdCount int) {
 	b.cmd = newCommand()
+	b.lastPointer = &b.cmd.sibling
+
+	b.cmdList = b.cmd
+
 	b.mgetCount = 0
 	b.maxCmdCount = maxCmdCount
 }
@@ -54,9 +61,19 @@ func appendNumber(data []byte, n uint64) []byte {
 	return data
 }
 
-func (b *cmdBuilder) addMGet(key string, opts MGetOptions) {
-	b.mgetCount++
+func (b *cmdBuilder) internalIncreaseCount() {
+	if b.cmd.cmdCount >= b.maxCmdCount {
+		b.internalResetMGetCount()
+		b.cmd = newCommand()
+		*b.lastPointer = b.cmd
+		b.lastPointer = &b.cmd.sibling
+	}
 	b.cmd.cmdCount++
+}
+
+func (b *cmdBuilder) addMGet(key string, opts MGetOptions) {
+	b.internalIncreaseCount()
+	b.mgetCount++
 
 	b.cmd.requestData = append(b.cmd.requestData, "mg "...)
 	b.cmd.requestData = append(b.cmd.requestData, key...)
@@ -74,7 +91,7 @@ func (b *cmdBuilder) addMGet(key string, opts MGetOptions) {
 }
 
 func (b *cmdBuilder) addMSet(key string, data []byte, opts MSetOptions) {
-	b.cmd.cmdCount++
+	b.internalIncreaseCount()
 
 	b.cmd.requestData = append(b.cmd.requestData, "ms "...)
 	b.cmd.requestData = append(b.cmd.requestData, key...)
@@ -98,7 +115,7 @@ func (b *cmdBuilder) addMSet(key string, data []byte, opts MSetOptions) {
 }
 
 func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
-	b.cmd.cmdCount++
+	b.internalIncreaseCount()
 
 	b.cmd.requestData = append(b.cmd.requestData, "md "...)
 	b.cmd.requestData = append(b.cmd.requestData, key...)
@@ -120,16 +137,21 @@ func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
 }
 
 func (b *cmdBuilder) addFlushAll() {
-	b.cmd.cmdCount++
+	b.internalIncreaseCount()
 	b.cmd.requestData = append(b.cmd.requestData, "flush_all\r\n"...)
 }
 
-func (b *cmdBuilder) getCmd() *commandData {
+func (b *cmdBuilder) getCurrentCommandForTest() *commandData {
 	return b.cmd
+}
+
+func (b *cmdBuilder) getCommandList() *commandData {
+	return b.cmdList
 }
 
 func (b *cmdBuilder) clearCmd() {
 	b.cmd = nil
+	b.cmdList = nil
 }
 
 func (b *cmdBuilder) internalResetMGetCount() {
@@ -139,5 +161,5 @@ func (b *cmdBuilder) internalResetMGetCount() {
 
 func (b *cmdBuilder) finish() *commandData {
 	b.internalResetMGetCount()
-	return b.cmd
+	return b.cmdList
 }

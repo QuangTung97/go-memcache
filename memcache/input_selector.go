@@ -88,7 +88,6 @@ func (s *inputSelector) getNextCommand(
 		hasSibling = true
 		sibling := cmd.sibling
 		s.longCmdList.append(sibling)
-		cmd.sibling = nil
 	}
 
 	return result, getNextCommandStatus{

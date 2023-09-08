@@ -47,7 +47,7 @@ func TestBuilder_AddMGet_And_MSet_Multi_Times(t *testing.T) {
 	assert.Equal(t, 2, cap(cmd.responseBinaries))
 
 	initCmdBuilder(b, 1000)
-	assert.Equal(t, 0, cap(b.getCmd().responseBinaries))
+	assert.Equal(t, 0, cap(b.getCurrentCommandForTest().responseBinaries))
 }
 
 func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
@@ -181,7 +181,9 @@ func Benchmark_AddMGet(b *testing.B) {
 	builder := newCmdBuilder()
 	for n := 0; n < b.N; n++ {
 		builder.addMGet("some:key", MGetOptions{N: 1234})
-		builder.cmd.requestData = builder.cmd.requestData[:0]
+
+		cmd := builder.getCurrentCommandForTest()
+		cmd.requestData = cmd.requestData[:0]
 	}
 }
 
@@ -196,5 +198,43 @@ func TestBuilder_AddMGet_Then_Clear(t *testing.T) {
 
 	b.clearCmd()
 
-	assert.Nil(t, b.getCmd())
+	assert.Nil(t, b.getCurrentCommandForTest())
+}
+
+func newCmdBuilderWithMax(maxCount int) *cmdBuilder {
+	var b cmdBuilder
+	initCmdBuilder(&b, maxCount)
+	return &b
+}
+
+func TestBuilder_With_Max_Count(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		b := newCmdBuilderWithMax(2)
+
+		b.addMGet("key01", MGetOptions{})
+		b.addMSet("key02", []byte("data 01"), MSetOptions{})
+
+		b.addMGet("key03", MGetOptions{})
+		b.addMGet("key04", MGetOptions{})
+
+		b.addMDel("key05", MDelOptions{})
+
+		cmd := b.finish()
+
+		assert.Equal(t, 2, cmd.cmdCount)
+		assert.Equal(t, "mg key01 v\r\nms key02 7\r\ndata 01\r\n", string(cmd.requestData))
+		assert.Equal(t, 1, cap(cmd.responseBinaries))
+
+		cmd = cmd.sibling
+		assert.Equal(t, 2, cmd.cmdCount)
+		assert.Equal(t, "mg key03 v\r\nmg key04 v\r\n", string(cmd.requestData))
+		assert.Equal(t, 2, cap(cmd.responseBinaries))
+
+		cmd = cmd.sibling
+		assert.Equal(t, 1, cmd.cmdCount)
+		assert.Equal(t, "md key05\r\n", string(cmd.requestData))
+		assert.Equal(t, 0, cap(cmd.responseBinaries))
+
+		assert.Nil(t, cmd.sibling)
+	})
 }

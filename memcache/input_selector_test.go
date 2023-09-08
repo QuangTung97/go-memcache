@@ -342,7 +342,7 @@ func TestInputSelector(t *testing.T) {
 		assert.Equal(t, 2, len(cmds))
 
 		assert.Equal(t, "mg key01", string(cmds[0].requestData))
-		assert.Nil(t, cmds[0].sibling)
+		assert.NotNil(t, cmds[0].sibling)
 		assert.Nil(t, cmds[0].link)
 
 		assert.Equal(t, "mg key02", string(cmds[1].requestData))
