@@ -493,10 +493,6 @@ func TestClient__With_WriteLimit__And_Max_Command_Count(t *testing.T) {
 	)
 	assert.Equal(t, nil, err)
 
-	t.Cleanup(func() {
-		_ = c.Close()
-	})
-
 	p := c.Pipeline()
 	defer p.Finish()
 
@@ -558,4 +554,10 @@ func TestClient__With_WriteLimit__And_Max_Command_Count(t *testing.T) {
 			"mg key05 v\r\n"+
 			"ms key04 7\r\ndata 04\r\n",
 		string(recorder.data))
+
+	_ = c.Close()
+
+	send := c.conns[0].core.sender
+	assert.Equal(t, uint64(8), send.selector.writeLimiter.cmdWriteCount)
+	assert.Equal(t, uint64(8), send.selector.writeLimiter.cmdReadCount.Load())
 }

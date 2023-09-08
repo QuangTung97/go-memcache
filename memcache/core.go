@@ -55,7 +55,8 @@ func (c *coreConnection) recvCommands() {
 	defer c.wg.Done()
 
 	for {
-		err := c.recvSingleCommandData()
+		var inc increaseReadCount
+		err := c.recvSingleCommandData(&inc)
 		if err != nil {
 			if errors.Is(err, ErrConnClosed) { // cmd len == 0
 				c.sender.shutdown()
@@ -69,7 +70,7 @@ func (c *coreConnection) recvCommands() {
 	}
 }
 
-func (c *coreConnection) recvSingleCommandData() error {
+func (c *coreConnection) recvSingleCommandData(inc *increaseReadCount) error {
 	cmdLen := c.cmdList.readIfExhausted()
 	if cmdLen == 0 {
 		return ErrConnClosed
@@ -79,7 +80,7 @@ func (c *coreConnection) recvSingleCommandData() error {
 	c.responseReader.setCurrentCommand(current)
 
 	for count := 0; count < current.cmdCount; count++ {
-		err := c.readNextMemcacheCommandResponse(current)
+		err := c.readNextMemcacheCommandResponse(current, inc)
 		if err != nil {
 			return err
 		}
@@ -102,9 +103,7 @@ func (i *increaseReadCount) apply(c *coreConnection, current *commandData) {
 	c.sender.selector.addReadCount(uint64(current.cmdCount))
 }
 
-func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData) error {
-	var inc increaseReadCount
-
+func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData, inc *increaseReadCount) error {
 	for {
 		// Read from response reader
 		ok := c.responseReader.readNextData()

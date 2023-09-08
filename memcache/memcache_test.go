@@ -193,4 +193,10 @@ func TestMemcache_Consistent_Cache(t *testing.T) {
 
 	err = client.Close()
 	assert.Equal(t, nil, err)
+
+	limiter := &client.conns[0].core.sender.selector.writeLimiter
+	assert.Equal(t, limiter.cmdReadCount.Load(), limiter.cmdWriteCount)
+
+	limiter = &client.conns[1].core.sender.selector.writeLimiter
+	assert.Equal(t, limiter.cmdReadCount.Load(), limiter.cmdWriteCount)
 }

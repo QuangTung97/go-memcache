@@ -158,6 +158,13 @@ func TestCoreConnection_Reader_Returns_Incorrect_Data__Response_Reader_Returns_E
 
 	assert.Equal(t, 1, len(reader1.ReadCalls()))
 	assert.Equal(t, 1, len(reader1.CloseCalls()))
+
+	c.sender.closeSendJob()
+	c.waitReceiverShutdown()
+
+	limiter := &c.sender.selector.writeLimiter
+	assert.Equal(t, uint64(1), limiter.cmdWriteCount)
+	assert.Equal(t, uint64(1), limiter.cmdReadCount.Load())
 }
 
 func TestCommandListReader(t *testing.T) {
