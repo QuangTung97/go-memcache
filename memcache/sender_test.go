@@ -192,6 +192,7 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 	assert.Equal(t, numRounds, bKeys)
 }
 
+//revive:disable-next-line:cognitive-complexity
 func TestSender_Publish_Stress_Test__With_Write_Limit(t *testing.T) {
 	var buf bytes.Buffer
 	s := newSender(newNetConnForTest(&buf), 2, 3)
