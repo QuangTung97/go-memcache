@@ -32,12 +32,19 @@ func newNetConnForTest(buf *bytes.Buffer) netconn.NetConn {
 	}
 }
 
+func closeAndWaitSendJob(s *sender) {
+	s.closeSendJob()
+	s.waitForClosingSendJob()
+}
+
 func TestSender_Publish(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8, 1000)
 
 	s.publish(newCommandFromString("mg key01 v\r\n"))
 	s.publish(newCommandFromString("mg key02 v k\r\n"))
+
+	closeAndWaitSendJob(s)
 
 	assert.Equal(t, "mg key01 v\r\nmg key02 v k\r\n", buf.String())
 
@@ -50,9 +57,7 @@ func TestSender_Publish(t *testing.T) {
 
 func TestSender_Publish_Concurrent(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 8)
-
-	s.connMut.Lock()
+	s := newSender(newNetConnForTest(&buf), 8, 1000)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -76,8 +81,9 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	s.connMut.Unlock()
 	wg.Wait()
+
+	closeAndWaitSendJob(s)
 
 	cmdList := make([]*commandData, 10)
 	n := s.readSentCommands(cmdList)
@@ -115,8 +121,7 @@ func stringsToMap(list []string) map[string]struct{} {
 //revive:disable-next-line:cognitive-complexity
 func TestSender_Publish_Stress_Test(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 2)
-	assert.Equal(t, 4, s.send.maxLen)
+	s := newSender(newNetConnForTest(&buf), 2, 1_000)
 
 	const numRounds = 200000
 
@@ -148,10 +153,87 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 		for total < 2*numRounds {
 			n := s.readSentCommands(cmdList)
 			total += n
+			s.selector.addReadCount(uint64(n))
 		}
 	}()
 
 	wg.Wait()
+
+	closeAndWaitSendJob(s)
+
+	aKeys := 0
+	bKeys := 0
+
+	scanner := bufio.NewScanner(&buf)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		key := strings.Fields(line)[1]
+		strList := strings.Split(key, ":")
+		prefix := strList[0]
+		num := strList[2]
+
+		if prefix == "A" {
+			if num != fmt.Sprintf("%09d", aKeys) {
+				panic("Missing key")
+			}
+			aKeys++
+		} else if prefix == "B" {
+			if num != fmt.Sprintf("%09d", bKeys) {
+				panic("Missing key")
+			}
+			bKeys++
+		} else {
+			panic("Invalid prefix")
+		}
+	}
+
+	assert.Equal(t, numRounds, aKeys)
+	assert.Equal(t, numRounds, bKeys)
+}
+
+//revive:disable-next-line:cognitive-complexity
+func TestSender_Publish_Stress_Test__With_Write_Limit(t *testing.T) {
+	var buf bytes.Buffer
+	s := newSender(newNetConnForTest(&buf), 2, 3)
+
+	const numRounds = 200000
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numRounds; i++ {
+			key := fmt.Sprintf("A:KEY:%09d", i)
+			s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numRounds; i++ {
+			key := fmt.Sprintf("B:KEY:%09d", i)
+			s.publish(newCommandFromString(fmt.Sprintf("mg %s\r\n", key)))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		cmdList := make([]*commandData, 29)
+		total := 0
+		for total < 2*numRounds {
+			n := s.readSentCommands(cmdList)
+			total += n
+			s.selector.addReadCount(uint64(n))
+		}
+	}()
+
+	wg.Wait()
+
+	closeAndWaitSendJob(s)
 
 	aKeys := 0
 	bKeys := 0
@@ -186,7 +268,10 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 
 func TestSender_Publish_Wait_Not_Ended_On_Fresh_Start(t *testing.T) {
 	var buf bytes.Buffer
-	s := newSender(newNetConnForTest(&buf), 8)
+	s := newSender(newNetConnForTest(&buf), 8, 1000)
+	t.Cleanup(func() {
+		closeAndWaitSendJob(s)
+	})
 
 	var ended uint32
 	go func() {
@@ -202,7 +287,7 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
 
-	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8, 1000)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
 		return 0, errors.New("some error")
@@ -217,6 +302,8 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 	s.publish(cmd1)
 	s.publish(cmd2)
 
+	closeAndWaitSendJob(s)
+
 	assert.Equal(t, 1, len(writer.WriteCalls()))
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
@@ -229,7 +316,7 @@ func TestSender_Publish_Write_Error(t *testing.T) {
 func TestSender_Publish_Flush_Error(t *testing.T) {
 	writer := &FlushWriterMock{}
 	closer := &closerInterfaceMock{}
-	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer, Closer: closer}, 8, 1000)
 
 	writer.WriteFunc = func(p []byte) (int, error) {
 		return len(p), nil
@@ -247,7 +334,9 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 	s.publish(cmd1)
 	s.publish(cmd2)
 
-	assert.Equal(t, 1, len(writer.WriteCalls()))
+	closeAndWaitSendJob(s)
+
+	assert.Greater(t, len(writer.WriteCalls()), 1)
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
 	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastErrorInternal())
@@ -263,7 +352,7 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	reader2 := &readCloserInterfaceMock{}
 
 	closer := &closerInterfaceMock{}
-	s := newSender(netconn.NetConn{Writer: writer1, Closer: closer}, 8)
+	s := newSender(netconn.NetConn{Writer: writer1, Closer: closer}, 8, 1000)
 
 	var writeBytes []byte
 	writer1.WriteFunc = func(p []byte) (int, error) {
@@ -287,6 +376,8 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 	cmd2 := newCommandFromString("mg key02 v\r\n")
 	s.publish(cmd2)
 
+	closeAndWaitSendJob(s)
+
 	cmdList := make([]*commandData, 10)
 	n := s.readSentCommands(cmdList)
 
@@ -303,7 +394,10 @@ func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
 		return nil
 	}
 
-	s := newSender(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer1}, 8)
+	s := newSender(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer1}, 8, 1000)
+	t.Cleanup(func() {
+		closeAndWaitSendJob(s)
+	})
 
 	s.shutdown()
 
@@ -317,71 +411,7 @@ func TestSender_ResetConn_After_Shutdown__Should_Close_Conn(t *testing.T) {
 	s.resetNetConn(netconn.NetConn{Writer: nil, Reader: nil, Closer: closer2})
 
 	assert.Equal(t, 1, len(closer2.CloseCalls()))
-}
-
-func TestSendBuffer_Concurrent_With_Waiting(t *testing.T) {
-	var b sendBuffer
-	initSendBuffer(&b, 1)
-
-	var wg sync.WaitGroup
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key01 v\r\n"))
-	}()
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key02 v\r\n"))
-	}()
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key03 v\r\n"))
-	}()
-	go func() {
-		defer wg.Done()
-		b.push(newCommandFromString("mg key04 v\r\n"))
-	}()
-
-	time.Sleep(5 * time.Millisecond)
-
-	commands := map[string]struct{}{}
-
-	output := b.popAll(nil)
-	assert.Equal(t, 2, len(output))
-	commands[string(output[0].requestData)] = struct{}{}
-	commands[string(output[1].requestData)] = struct{}{}
-
-	wg.Wait()
-
-	output = b.popAll(nil)
-	assert.Equal(t, 2, len(output))
-	commands[string(output[0].requestData)] = struct{}{}
-	commands[string(output[1].requestData)] = struct{}{}
-
-	assert.Equal(t, map[string]struct{}{
-		"mg key01 v\r\n": {},
-		"mg key02 v\r\n": {},
-		"mg key03 v\r\n": {},
-		"mg key04 v\r\n": {},
-	}, commands)
-}
-
-func TestSendBuffer_Clear_Commands_To_Nil(t *testing.T) {
-	var b sendBuffer
-	initSendBuffer(&b, 2)
-
-	b.push(newCommandFromString("mg key01 v\r\n"))
-	b.push(newCommandFromString("mg key02 v\r\n"))
-	b.push(newCommandFromString("mg key03 v\r\n"))
-
-	cmdList := b.popAll(nil)
-	assert.Equal(t, 3, len(cmdList))
-
-	b.buf = b.buf[:4]
-	assert.Nil(t, b.buf[0])
-	assert.Nil(t, b.buf[1])
-	assert.Nil(t, b.buf[2])
-	assert.Nil(t, b.buf[3])
+	assert.Equal(t, ErrConnClosed, s.conn.getLastErrorInternal())
 }
 
 func TestRecvBuffer__Push_And_Then_Read__Command_List_Should_Be_Nil(t *testing.T) {

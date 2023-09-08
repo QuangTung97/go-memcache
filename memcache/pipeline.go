@@ -46,7 +46,7 @@ func (p *Pipeline) newPipelineSession() *pipelineSession {
 
 		currentCmdList: make([]*pipelineCmd, 0, 32),
 	}
-	initCmdBuilder(&sess.builder)
+	initCmdBuilder(&sess.builder, p.c.maxCommandsPerBatch)
 	return sess
 }
 
@@ -66,18 +66,30 @@ func (c *Client) Pipeline() *Pipeline {
 	return p
 }
 
-func (s *pipelineSession) parseCommands(currentCmd *commandData) {
+func (s *pipelineSession) parseCommands(cmdList *commandData) {
+	pipeCmds := s.currentCmdList
+	for current := cmdList; current != nil; current = current.sibling {
+		n := current.cmdCount
+		parseCommandsForSingleCommandData(pipeCmds[:n], current)
+		pipeCmds = pipeCmds[n:]
+	}
+}
+
+func parseCommandsForSingleCommandData(
+	pipelineCommands []*pipelineCmd,
+	currentCmd *commandData,
+) {
 	var ps parser
 	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
 
 	if currentCmd.lastErr != nil {
-		for _, cmd := range s.currentCmdList {
+		for _, cmd := range pipelineCommands {
 			cmd.err = currentCmd.lastErr
 		}
 		return
 	}
 
-	for _, cmd := range s.currentCmdList {
+	for _, cmd := range pipelineCommands {
 		switch cmd.cmdType {
 		case commandTypeMGet:
 			resp, err := ps.readMGet()
@@ -107,6 +119,12 @@ func (s *pipelineSession) parseCommands(currentCmd *commandData) {
 	}
 }
 
+func commandListWaitCompleted(cmdList *commandData) {
+	for current := cmdList; current != nil; current = current.sibling {
+		current.waitCompleted()
+	}
+}
+
 func (s *pipelineSession) waitAndParseCmdData() {
 	if s.alreadyWaited {
 		return
@@ -114,13 +132,18 @@ func (s *pipelineSession) waitAndParseCmdData() {
 	s.alreadyWaited = true
 	s.pipeline.resetPipelineSession()
 
-	currentCmd := s.builder.getCmd()
-	currentCmd.waitCompleted()
+	cmdList := s.builder.getCommandList()
+	commandListWaitCompleted(cmdList)
 
-	s.parseCommands(currentCmd)
+	s.parseCommands(cmdList)
 
 	// clear currentCmdList
-	freeCommandResponseData(currentCmd)
+	for current := cmdList; current != nil; {
+		freeCommandResponseData(current)
+		clearCmd := current
+		current = current.sibling
+		clearCmd.sibling = nil
+	}
 	s.builder.clearCmd()
 }
 
@@ -147,8 +170,7 @@ func (s *pipelineSession) pushCommandsIfNotPublished() {
 	if !s.published {
 		s.published = true
 
-		builderCmd := s.builder.getCmd()
-		builderCmd.responseBinaries = make([][]byte, 0, s.builder.getMgetCount())
+		builderCmd := s.builder.finish()
 		s.pushCommands(builderCmd)
 	}
 }

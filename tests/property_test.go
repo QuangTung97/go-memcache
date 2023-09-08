@@ -3,8 +3,8 @@ package tests
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"github.com/QuangTung97/go-memcache/memcache"
 	"hash/crc32"
 	"math"
 	"math/rand"
@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/QuangTung97/go-memcache/memcache"
 )
 
 type propertyTest struct {
@@ -28,8 +30,8 @@ type propertyTest struct {
 	client *memcache.Client
 }
 
-func newPropertyTest(t *testing.T) *propertyTest {
-	client, err := memcache.New("localhost:11211", 3)
+func newPropertyTest(t *testing.T, numConns int, options ...memcache.Option) *propertyTest {
+	client, err := memcache.New("localhost:11211", numConns, options...)
 	if err != nil {
 		panic(err)
 	}
@@ -181,7 +183,8 @@ func (p *propertyTest) doSetSingleLoop(r *rand.Rand) {
 		}
 
 		if memcache.IsServerError(err) {
-			serverErr := err.(memcache.ErrServerError)
+			var serverErr memcache.ErrServerError
+			errors.As(err, &serverErr)
 			p.serverErrors.Store(serverErr.Message, true)
 
 			p.totalServerErr.Add(1)
@@ -219,7 +222,7 @@ func (p *propertyTest) doDeleteSingleLoop(r *rand.Rand) {
 }
 
 func TestPropertyBased(t *testing.T) {
-	p := newPropertyTest(t)
+	p := newPropertyTest(t, 3)
 
 	seedValue := time.Now().UnixNano()
 	fmt.Println("SEED:", seedValue)
@@ -235,6 +238,66 @@ func TestPropertyBased(t *testing.T) {
 	const getThreads = 20
 	const setThreads = 10
 	const deleteThreads = 4
+
+	var wg sync.WaitGroup
+	wg.Add(getThreads + setThreads + deleteThreads)
+
+	for th := 0; th < getThreads; th++ {
+		go func() {
+			defer wg.Done()
+			p.doGet(newRand())
+		}()
+	}
+
+	for th := 0; th < setThreads; th++ {
+		go func() {
+			defer wg.Done()
+			p.doSet(newRand())
+		}()
+	}
+
+	for th := 0; th < deleteThreads; th++ {
+		go func() {
+			defer wg.Done()
+			p.doDelete(newRand())
+		}()
+	}
+
+	wg.Wait()
+
+	fmt.Println("TOTAL FOUND:", p.totalFound.Load())
+	fmt.Println("TOTAL NOT FOUND:", p.totalNotFound.Load())
+	fmt.Println("TOTAL SET SUCCESS:", p.totalSetSuccess.Load())
+	fmt.Println("TOTAL SERVER ERROR:", p.totalServerErr.Load())
+	fmt.Println("TOTAL DELETE:", p.totalDelete.Load())
+
+	p.serverErrors.Range(func(key, value any) bool {
+		fmt.Println("SERVER ERROR:", key, value)
+		return true
+	})
+}
+
+func TestPropertyBased__With_Write_Limit__And_Max_Command_Count(t *testing.T) {
+	p := newPropertyTest(t,
+		2,
+		memcache.WithWriteLimit(8),
+		memcache.WithMaxCommandsPerBatch(4),
+	)
+
+	seedValue := time.Now().UnixNano()
+	fmt.Println("SEED:", seedValue)
+
+	var seed atomic.Int64
+	seed.Add(seedValue)
+
+	newRand := func() *rand.Rand {
+		newSeed := seed.Add(1)
+		return rand.New(rand.NewSource(newSeed))
+	}
+
+	const getThreads = 8
+	const setThreads = 5
+	const deleteThreads = 3
 
 	var wg sync.WaitGroup
 	wg.Add(getThreads + setThreads + deleteThreads)

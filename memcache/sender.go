@@ -16,88 +16,6 @@ type FlushWriter = netconn.FlushWriter
 
 //go:generate moq -out sender_mocks_test.go . FlushWriter closerInterface readCloserInterface
 
-// =====================
-// Pool of Bytes
-// =====================
-var requestBytesPool = bytesPool{
-	pool: sync.Pool{
-		New: func() any {
-			return make([]byte, 0, 256)
-		},
-	},
-}
-
-var responseBytesPool = bytesPool{
-	pool: sync.Pool{
-		New: func() any {
-			return make([]byte, 0, 1024)
-		},
-	},
-}
-
-type bytesPool struct {
-	pool sync.Pool
-}
-
-func (p *bytesPool) get() []byte {
-	return p.pool.Get().([]byte)
-}
-
-func (p *bytesPool) put(data []byte) {
-	data = data[:0]
-	p.pool.Put(data)
-}
-
-type commandData struct {
-	cmdCount int
-
-	requestData  []byte
-	responseData []byte
-
-	responseBinaries [][]byte // mget binary responses
-
-	conn *senderConnection
-
-	lastErr error
-	ch      chan error
-}
-
-func newCommandChannel() chan error {
-	return make(chan error, 1)
-}
-
-func newCommand() *commandData {
-	c := &commandData{
-		requestData:  requestBytesPool.get(),
-		responseData: responseBytesPool.get(),
-	}
-	c.ch = newCommandChannel()
-	return c
-}
-
-func freeCommandResponseData(cmd *commandData) {
-	responseBytesPool.put(cmd.responseData)
-	cmd.responseData = nil
-	for i := range cmd.responseBinaries {
-		cmd.responseBinaries[i] = nil
-	}
-	cmd.responseBinaries = nil
-}
-
-func freeCommandRequestData(cmd *commandData) {
-	requestBytesPool.put(cmd.requestData)
-	cmd.requestData = nil
-}
-
-func (c *commandData) waitCompleted() {
-	err := <-c.ch
-	c.lastErr = err
-}
-
-func (c *commandData) setCompleted(err error) {
-	c.ch <- err
-}
-
 type sender struct {
 	// ---- protected by connMut ------
 	connMut     sync.Mutex
@@ -107,8 +25,10 @@ type sender struct {
 	closed      bool
 	// ---- end connMut protection ----
 
-	send sendBuffer
-	recv recvBuffer
+	finishCh chan struct{}
+	sendBuf  sendBuffer
+	selector inputSelector
+	recv     recvBuffer
 }
 
 type senderConnection struct {
@@ -179,53 +99,6 @@ func (c *senderConnection) readData(data []byte) (int, error) {
 	}
 
 	return n, nil
-}
-
-// ----------------------------------
-// Send Buffer
-// ----------------------------------
-type sendBuffer struct {
-	buf    []*commandData
-	maxLen int
-	mut    sync.Mutex
-	cond   *sync.Cond
-}
-
-func initSendBuffer(b *sendBuffer, bufSizeLog int) {
-	maxSize := 1 << bufSizeLog
-	b.buf = make([]*commandData, 0, maxSize)
-	b.maxLen = maxSize
-
-	b.cond = sync.NewCond(&b.mut)
-}
-
-func (b *sendBuffer) popAll(output []*commandData) []*commandData {
-	b.mut.Lock()
-	output = append(output, b.buf...)
-
-	// clear buffer
-	for i := range b.buf {
-		b.buf[i] = nil
-	}
-	b.buf = b.buf[:0]
-
-	b.mut.Unlock()
-
-	b.cond.Broadcast()
-	return output
-}
-
-func (b *sendBuffer) push(cmd *commandData) (isLeader bool) {
-	b.mut.Lock()
-	for len(b.buf) >= b.maxLen {
-		b.cond.Wait()
-	}
-
-	prevLen := len(b.buf)
-	b.buf = append(b.buf, cmd)
-	b.mut.Unlock()
-
-	return prevLen == 0
 }
 
 // ----------------------------------
@@ -323,14 +196,19 @@ func (b *recvBuffer) closeBuffer() {
 	b.recvCond.Signal()
 }
 
-func newSender(nc netconn.NetConn, bufSizeLog int) *sender {
+func newSender(nc netconn.NetConn, bufSizeLog int, writeLimit int) *sender {
 	s := &sender{}
 	s.conn = newSenderConn(s, nc)
+	s.ncErrorCond = sync.NewCond(&s.connMut)
 
-	initSendBuffer(&s.send, bufSizeLog)
+	initSendBuffer(&s.sendBuf)
+	initInputSelector(&s.selector, &s.sendBuf, writeLimit)
+
 	initRecvBuffer(&s.recv, bufSizeLog+1)
 
-	s.ncErrorCond = sync.NewCond(&s.connMut)
+	s.finishCh = make(chan struct{})
+	go s.runSenderJob()
+
 	return s
 }
 
@@ -362,39 +240,45 @@ func (s *sender) writeAndFlush() {
 	}
 }
 
-func (s *sender) sendToWriter() {
-	s.connMut.Lock()
+func (s *sender) sendToWriter() (closed bool) {
+	s.tmpBuf, closed = s.selector.readCommands(s.tmpBuf)
 
-	s.tmpBuf = s.send.popAll(s.tmpBuf)
+	s.connMut.Lock()
 
 	for _, cmd := range s.tmpBuf {
 		cmd.conn = s.conn
 	}
 
-	remainingCommands, closed := s.recv.push(s.tmpBuf)
-	if closed {
-		for _, cmd := range remainingCommands {
-			cmd.setCompleted(ErrConnClosed)
-		}
-		s.tmpBuf = clearCmdList(s.tmpBuf)
-		s.connMut.Unlock()
-		return
-	}
+	s.recv.push(s.tmpBuf)
 
 	// flush to tcp socket
 	s.writeAndFlush()
 
 	s.tmpBuf = clearCmdList(s.tmpBuf)
 	s.connMut.Unlock()
+
+	return closed
 }
 
 func (s *sender) publish(cmd *commandData) {
-	isLeader := s.send.push(cmd)
-	if !isLeader {
-		return
+	closed := s.sendBuf.push(cmd)
+	if closed {
+		cmd.setCompleted(ErrConnClosed) // TODO Check test if removed
 	}
+}
 
-	s.sendToWriter()
+func (s *sender) runSenderJob() {
+	defer func() {
+		s.recv.closeBuffer()
+		close(s.finishCh)
+	}()
+
+	for {
+		closed := s.sendToWriter()
+		if closed {
+			return
+		}
+	}
 }
 
 func (s *sender) readSentCommands(cmdList []*commandData) int {
@@ -421,10 +305,12 @@ func (s *sender) resetNetConn(nc netconn.NetConn) {
 	s.connMut.Unlock()
 }
 
-func (s *sender) closeRecvBuffer() {
-	s.connMut.Lock()
-	s.recv.closeBuffer()
-	s.connMut.Unlock()
+func (s *sender) closeSendJob() {
+	s.sendBuf.close()
+}
+
+func (s *sender) waitForClosingSendJob() {
+	<-s.finishCh
 }
 
 func (s *sender) shutdown() {
