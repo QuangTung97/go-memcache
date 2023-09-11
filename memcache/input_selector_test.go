@@ -571,11 +571,15 @@ func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
 		}()
 	}
 
-	readCh := make(chan struct{})
 	recvList := make([]string, 0, numLoops*numThreads*3)
+	recvChan := make(chan int, 3)
+
+	var consumeWg sync.WaitGroup
+	consumeWg.Add(2)
 
 	go func() {
-		defer close(readCh)
+		defer consumeWg.Done()
+		defer close(recvChan)
 
 		tmpBuf := make([]*commandData, 0, 256)
 
@@ -586,7 +590,7 @@ func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
 			for _, cmd := range tmpBuf {
 				recvList = append(recvList, string(cmd.requestData))
 			}
-			s.addReadCount(uint64(len(tmpBuf)))
+			recvChan <- len(tmpBuf)
 
 			tmpBuf = tmpBuf[:0]
 			if closed {
@@ -595,9 +599,17 @@ func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
 		}
 	}()
 
+	go func() {
+		defer consumeWg.Done()
+
+		for n := range recvChan {
+			s.addReadCount(uint64(n))
+		}
+	}()
+
 	wg.Wait()
 	send.close()
-	<-readCh
+	consumeWg.Wait()
 
 	sort.Strings(recvList)
 	for i, str := range recvList {
