@@ -143,5 +143,10 @@ func TestSendBuffer(t *testing.T) {
 
 		assert.Nil(t, cmdList)
 		assert.Equal(t, true, popClosed)
+
+		// pop again
+		cmdList, popClosed = b.popAll(true)
+		assert.Nil(t, cmdList)
+		assert.Equal(t, true, popClosed)
 	})
 }

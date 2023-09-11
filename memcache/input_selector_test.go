@@ -3,6 +3,7 @@ package memcache
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -526,6 +527,85 @@ func TestInputSelector_Concurrent(t *testing.T) {
 
 	<-readFinish
 	assert.Equal(t, 2*numLoops, total)
+}
+
+//revive:disable-next-line:cognitive-complexity
+func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
+	seed := time.Now().UnixNano()
+	fmt.Println("SEED =", seed)
+	rand.Seed(seed)
+
+	send := newSendBuffer()
+	s := newInputSelector(send, 37)
+
+	var nextCmd atomic.Uint64
+
+	const numThreads = 5
+	const numLoops = 20000
+
+	const cmdFormat = "mg %07d"
+
+	var wg sync.WaitGroup
+	wg.Add(numThreads)
+
+	for th := 0; th < numThreads; th++ {
+		go func() {
+			defer wg.Done()
+
+			for l := 0; l < numLoops; l++ {
+				siblingCount := uint64(1 + rand.Intn(3)) // rand [1, 3]
+				cmdIndex := nextCmd.Add(siblingCount)
+				start := cmdIndex - siblingCount
+
+				list := make([]string, 0, siblingCount)
+				for i := 0; i < int(siblingCount); i++ {
+					list = append(list, fmt.Sprintf(cmdFormat, int(start)+i))
+				}
+
+				cmd := newCommandChain(list...)
+				closed := send.push(cmd)
+				if closed {
+					panic("not closed")
+				}
+			}
+		}()
+	}
+
+	readCh := make(chan struct{})
+	recvList := make([]string, 0, numLoops*numThreads*3)
+
+	go func() {
+		defer close(readCh)
+
+		tmpBuf := make([]*commandData, 0, 256)
+
+		for {
+			var closed bool
+			tmpBuf, closed = s.readCommands(tmpBuf)
+
+			for _, cmd := range tmpBuf {
+				recvList = append(recvList, string(cmd.requestData))
+			}
+			s.addReadCount(uint64(len(tmpBuf)))
+
+			tmpBuf = tmpBuf[:0]
+			if closed {
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	send.close()
+	<-readCh
+
+	sort.Strings(recvList)
+	for i, str := range recvList {
+		cmp := fmt.Sprintf(cmdFormat, i)
+		if str != cmp {
+			panic("Invariant violated: " + str + ", " + cmp)
+		}
+	}
 }
 
 func newConnWriteLimiter(limit int) *connWriteLimiter {
