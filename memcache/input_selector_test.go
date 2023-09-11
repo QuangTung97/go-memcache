@@ -541,7 +541,7 @@ func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
 	var nextCmd atomic.Uint64
 
 	const numThreads = 5
-	const numLoops = 2000
+	const numLoops = 20000
 
 	const cmdFormat = "mg %07d"
 
