@@ -13,7 +13,13 @@ import (
 
 func newInputSelector(send *sendBuffer, limit int) *inputSelector {
 	s := &inputSelector{}
-	initInputSelector(s, send, limit)
+	initInputSelector(s, send, limit, 10_000)
+	return s
+}
+
+func newInputSelectorWithReadLimit(send *sendBuffer, writeCmdLimit int, readLimit int) *inputSelector {
+	s := &inputSelector{}
+	initInputSelector(s, send, writeCmdLimit, readLimit)
 	return s
 }
 
@@ -424,6 +430,52 @@ func TestInputSelector(t *testing.T) {
 
 		assert.Equal(t, "mg key11", string(cmds[0].requestData))
 		assert.Equal(t, "mg key05", string(cmds[1].requestData))
+	})
+}
+
+func TestInputSelector_With_ReadLimit(t *testing.T) {
+	t.Run("read limit = 3, reach limit", func(t *testing.T) {
+		send := newSendBuffer()
+		s := newInputSelectorWithReadLimit(send, 10, 3)
+
+		send.push(newCommandWithCount("mg key01", 1))
+		send.push(newCommandWithCount("mg key02", 1))
+		send.push(newCommandWithCount("mg key03", 1))
+		send.push(newCommandWithCount("mg key04", 1))
+
+		placeholder := make([]*commandData, 0, 255)
+		result, closed := s.readCommands(placeholder)
+		assert.Equal(t, false, closed)
+
+		assert.Equal(t, 3, len(result))
+		assert.Equal(t, "mg key01", string(result[0].requestData))
+		assert.Equal(t, "mg key02", string(result[1].requestData))
+		assert.Equal(t, "mg key03", string(result[2].requestData))
+
+		assert.Equal(t, 255, cap(result))
+
+		// read again
+		result, closed = s.readCommands(nil)
+		assert.Equal(t, false, closed)
+
+		assert.Equal(t, 1, len(result))
+		assert.Equal(t, "mg key04", string(result[0].requestData))
+	})
+
+	t.Run("read limit = 3, not reach limit", func(t *testing.T) {
+		send := newSendBuffer()
+		s := newInputSelectorWithReadLimit(send, 10, 3)
+
+		send.push(newCommandWithCount("mg key01", 1))
+		send.push(newCommandWithCount("mg key02", 1))
+
+		placeholder := make([]*commandData, 0, 255)
+		result, closed := s.readCommands(placeholder)
+		assert.Equal(t, false, closed)
+
+		assert.Equal(t, 2, len(result))
+		assert.Equal(t, "mg key01", string(result[0].requestData))
+		assert.Equal(t, "mg key02", string(result[1].requestData))
 	})
 }
 

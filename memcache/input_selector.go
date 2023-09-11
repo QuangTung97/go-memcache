@@ -11,6 +11,8 @@ type inputSelector struct {
 
 	inputList   selectorCommandList
 	longCmdList selectorCommandList
+
+	readLimit int
 }
 
 type selectorCommandList struct {
@@ -39,12 +41,19 @@ func (l *selectorCommandList) removeFirst() {
 	}
 }
 
-func initInputSelector(s *inputSelector, sendBuf *sendBuffer, limit int) {
+func initInputSelector(
+	s *inputSelector,
+	sendBuf *sendBuffer,
+	writeCmdLimit int,
+	readLimit int,
+) {
 	s.sendBuf = sendBuf
-	initConnWriteLimiter(&s.writeLimiter, limit)
+	initConnWriteLimiter(&s.writeLimiter, writeCmdLimit)
 
 	initSelectorCommandList(&s.inputList)
 	initSelectorCommandList(&s.longCmdList)
+
+	s.readLimit = readLimit
 }
 
 type getNextCommandStatus struct {
@@ -63,6 +72,12 @@ func (s *inputSelector) getNextCommand(
 
 	cmd := cmdList.head
 	writeCount := uint64(cmd.cmdCount)
+
+	if len(result) >= s.readLimit {
+		return result, getNextCommandStatus{
+			allowMore: false,
+		}
+	}
 
 	if writeCount <= s.writeLimiter.writeLimit {
 		doWait := len(result) == 0

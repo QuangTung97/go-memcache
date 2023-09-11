@@ -649,6 +649,33 @@ func TestPipeline_Execute__When_Empty_Commands(t *testing.T) {
 	p.Execute()
 }
 
+func TestPipeline_Many_Commands_Cause_Deadlock(t *testing.T) {
+	p := newPipelineTest(t,
+		WithWriteLimit(500),
+		WithMaxCommandsPerBatch(1),
+	)
+
+	_, err := p.MSet("KEY01", []byte("some data"), MSetOptions{})()
+	assert.Equal(t, nil, err)
+
+	const numGets = 500
+
+	fnList := make([]func() (MGetResponse, error), 0, numGets)
+	for i := 0; i < numGets; i++ {
+		fn := p.MGet("KEY01", MGetOptions{})
+		fnList = append(fnList, fn)
+	}
+
+	for _, fn := range fnList {
+		resp, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, MGetResponse{
+			Type: MGetResponseTypeVA,
+			Data: []byte("some data"),
+		}, resp)
+	}
+}
+
 func TestPipeline_Not_Blocking__When_Wait_For_Response__After_Close(t *testing.T) {
 	for i := 0; i < 4000; i++ {
 		func() {

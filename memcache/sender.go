@@ -202,7 +202,7 @@ func newSender(nc netconn.NetConn, bufSizeLog int, writeLimit int) *sender {
 	s.ncErrorCond = sync.NewCond(&s.connMut)
 
 	initSendBuffer(&s.sendBuf)
-	initInputSelector(&s.selector, &s.sendBuf, writeLimit)
+	initInputSelector(&s.selector, &s.sendBuf, writeLimit, 1<<bufSizeLog)
 
 	initRecvBuffer(&s.recv, bufSizeLog+1)
 
