@@ -263,7 +263,7 @@ func (s *sender) sendToWriter() (closed bool) {
 func (s *sender) publish(cmd *commandData) {
 	closed := s.sendBuf.push(cmd)
 	if closed {
-		cmd.setCompleted(ErrConnClosed) // TODO Check test if removed
+		cmd.setCompleted(ErrConnClosed)
 	}
 }
 

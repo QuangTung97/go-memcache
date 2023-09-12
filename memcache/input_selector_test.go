@@ -530,7 +530,7 @@ func TestInputSelector_Concurrent(t *testing.T) {
 }
 
 //revive:disable-next-line:cognitive-complexity
-func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
+func TestInputSelector_Concurrent_With_Sibling(t *testing.T) {
 	seed := time.Now().UnixNano()
 	fmt.Println("SEED =", seed)
 	rand.Seed(seed)
@@ -610,6 +610,8 @@ func TestInputSelector_Concurrent_With_Sibling(*testing.T) {
 	wg.Wait()
 	send.close()
 	consumeWg.Wait()
+
+	assert.Equal(t, nextCmd.Load(), uint64(len(recvList)))
 
 	sort.Strings(recvList)
 	for i, str := range recvList {
