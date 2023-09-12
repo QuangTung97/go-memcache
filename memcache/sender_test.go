@@ -336,7 +336,8 @@ func TestSender_Publish_Flush_Error(t *testing.T) {
 
 	closeAndWaitSendJob(s)
 
-	assert.Greater(t, len(writer.WriteCalls()), 1)
+	assert.GreaterOrEqual(t, len(writer.WriteCalls()), 1)
+	assert.GreaterOrEqual(t, len(writer.FlushCalls()), 1)
 	assert.Equal(t, 1, len(closer.CloseCalls()))
 
 	assert.Equal(t, errors.New("some error"), cmd1.conn.getLastErrorInternal())
