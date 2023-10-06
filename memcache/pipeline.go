@@ -17,15 +17,14 @@ type pipelineSession struct {
 	published     bool
 	alreadyWaited bool
 
-	currentCmdList []*pipelineCmd
+	currentCmdList []pipelineCmd
 }
 
 type pipelineCmd struct {
-	sess *pipelineSession
-
 	cmdType commandType
-	resp    unsafe.Pointer
-	err     error
+
+	resp unsafe.Pointer
+	err  error
 
 	isRead bool
 }
@@ -44,15 +43,14 @@ func (p *Pipeline) newPipelineSession() *pipelineSession {
 		published:     false,
 		alreadyWaited: false,
 
-		currentCmdList: make([]*pipelineCmd, 0, 32),
+		currentCmdList: make([]pipelineCmd, 0, 32),
 	}
 	initCmdBuilder(&sess.builder, p.c.maxCommandsPerBatch)
 	return sess
 }
 
-func newPipelineCmd(sess *pipelineSession, cmdType commandType) *pipelineCmd {
-	return &pipelineCmd{
-		sess:    sess,
+func newPipelineCmd(cmdType commandType) pipelineCmd {
+	return pipelineCmd{
 		cmdType: cmdType,
 	}
 }
@@ -76,20 +74,23 @@ func (s *pipelineSession) parseCommands(cmdList *commandData) {
 }
 
 func parseCommandsForSingleCommandData(
-	pipelineCommands []*pipelineCmd,
+	pipelineCommands []pipelineCmd,
 	currentCmd *commandData,
 ) {
 	var ps parser
 	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
 
 	if currentCmd.lastErr != nil {
-		for _, cmd := range pipelineCommands {
+		for i := range pipelineCommands {
+			cmd := &pipelineCommands[i]
 			cmd.err = currentCmd.lastErr
 		}
 		return
 	}
 
-	for _, cmd := range pipelineCommands {
+	for i := range pipelineCommands {
+		cmd := &pipelineCommands[i]
+
 		switch cmd.cmdType {
 		case commandTypeMGet:
 			resp, err := ps.readMGet()
@@ -175,17 +176,32 @@ func (s *pipelineSession) pushCommandsIfNotPublished() {
 	}
 }
 
-func (c *pipelineCmd) pushAndWaitResponses() {
+type commandIndex struct {
+	sess  *pipelineSession
+	index int
+}
+
+func (c commandIndex) getCmd() *pipelineCmd {
+	return &c.sess.currentCmdList[c.index]
+}
+
+func (c commandIndex) pushAndWaitResponses() {
 	sess := c.sess
 	sess.pushCommandsIfNotPublished()
 	sess.waitAndParseCmdData()
 }
 
-func (p *Pipeline) addCommand(cmdType commandType) *pipelineCmd {
+func (p *Pipeline) addCommand(cmdType commandType) commandIndex {
 	sess := p.getCurrentSession()
-	cmd := newPipelineCmd(sess, cmdType)
+	cmd := newPipelineCmd(cmdType)
+
+	index := len(sess.currentCmdList)
 	sess.currentCmdList = append(sess.currentCmdList, cmd)
-	return cmd
+
+	return commandIndex{
+		sess:  sess,
+		index: index,
+	}
 }
 
 // Finish ...
@@ -197,13 +213,32 @@ func (p *Pipeline) Finish() {
 	}
 }
 
-func (p *Pipeline) pushAndWaitIfNotRead(cmd *pipelineCmd) error {
+func (c commandIndex) pushAndWaitIfNotRead() error {
+	cmd := c.getCmd()
+
 	if cmd.isRead {
 		return ErrAlreadyGotten
 	}
+
 	cmd.isRead = true
-	cmd.pushAndWaitResponses()
+	c.pushAndWaitResponses()
+
 	return nil
+}
+
+func (c commandIndex) mgetResponseFunc() (MGetResponse, error) {
+	err := c.pushAndWaitIfNotRead()
+	if err != nil {
+		return MGetResponse{}, err
+	}
+
+	cmd := c.getCmd()
+
+	resp := (*MGetResponse)(cmd.resp)
+	if resp == nil {
+		return MGetResponse{}, cmd.err
+	}
+	return *resp, cmd.err
 }
 
 // MGet ...
@@ -217,17 +252,7 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 	cmd := p.addCommand(commandTypeMGet)
 	cmd.sess.builder.addMGet(key, opts)
 
-	return func() (MGetResponse, error) {
-		err := p.pushAndWaitIfNotRead(cmd)
-		if err != nil {
-			return MGetResponse{}, err
-		}
-		resp := (*MGetResponse)(cmd.resp)
-		if resp == nil {
-			return MGetResponse{}, cmd.err
-		}
-		return *resp, cmd.err
-	}
+	return cmd.mgetResponseFunc
 }
 
 // MSet ...
@@ -238,14 +263,17 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 		}
 	}
 
-	cmd := p.addCommand(commandTypeMSet)
-	cmd.sess.builder.addMSet(key, value, opts)
+	cmdIndex := p.addCommand(commandTypeMSet)
+	cmdIndex.sess.builder.addMSet(key, value, opts)
 
 	return func() (MSetResponse, error) {
-		err := p.pushAndWaitIfNotRead(cmd)
+		err := cmdIndex.pushAndWaitIfNotRead()
 		if err != nil {
 			return MSetResponse{}, err
 		}
+
+		cmd := cmdIndex.getCmd()
+
 		resp := (*MSetResponse)(cmd.resp)
 		if resp == nil {
 			return MSetResponse{}, cmd.err
@@ -262,15 +290,17 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 		}
 	}
 
-	cmd := p.addCommand(commandTypeMDel)
-
-	cmd.sess.builder.addMDel(key, opts)
+	cmdIndex := p.addCommand(commandTypeMDel)
+	cmdIndex.sess.builder.addMDel(key, opts)
 
 	return func() (MDelResponse, error) {
-		err := p.pushAndWaitIfNotRead(cmd)
+		err := cmdIndex.pushAndWaitIfNotRead()
 		if err != nil {
 			return MDelResponse{}, err
 		}
+
+		cmd := cmdIndex.getCmd()
+
 		resp := (*MDelResponse)(cmd.resp)
 		if resp == nil {
 			return MDelResponse{}, cmd.err
@@ -288,14 +318,16 @@ func (p *Pipeline) Execute() {
 
 // FlushAll ...
 func (p *Pipeline) FlushAll() func() error {
-	cmd := p.addCommand(commandTypeFlushAll)
-	cmd.sess.builder.addFlushAll()
+	cmdIndex := p.addCommand(commandTypeFlushAll)
+	cmdIndex.sess.builder.addFlushAll()
 
 	return func() error {
-		err := p.pushAndWaitIfNotRead(cmd)
+		err := cmdIndex.pushAndWaitIfNotRead()
 		if err != nil {
 			return err
 		}
+
+		cmd := cmdIndex.getCmd()
 		return cmd.err
 	}
 }
