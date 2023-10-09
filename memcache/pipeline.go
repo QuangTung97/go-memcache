@@ -273,6 +273,11 @@ func (r MGetResult) Result() (MGetResponse, error) {
 	return cmd.getResp, cmd.err
 }
 
+// ReleaseMGetResult puts back to pool for reuse
+func ReleaseMGetResult(r MGetResult) {
+	putPipelineCmdToPool(r.ref.cmd)
+}
+
 // MSet ...
 func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSetResponse, error) {
 	if err := validateKeyFormat(key); err != nil {

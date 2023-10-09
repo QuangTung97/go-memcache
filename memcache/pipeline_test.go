@@ -47,7 +47,6 @@ func TestPipeline_Simple_MGet(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, resp)
 }
@@ -68,19 +67,43 @@ func TestPipeline_Multi_MGet(t *testing.T) {
 
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, r1)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, r2)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, r3)
+}
+
+func TestPipeline_MGetFast_With_Release(t *testing.T) {
+	p := newPipelineTest(t)
+
+	mg1, err := p.MGetFast("key01", MGetOptions{N: 10, CAS: true})
+	assert.Equal(t, nil, err)
+
+	mg2, err := p.MGetFast("key02", MGetOptions{N: 10, CAS: true})
+	assert.Equal(t, nil, err)
+
+	r1, err := mg1.Result()
+	assert.Equal(t, nil, err)
+	r2, err := mg2.Result()
+	assert.Equal(t, nil, err)
+
+	assertMGetEqual(t, MGetResponse{
+		Type:  MGetResponseTypeVA,
+		Flags: MGetFlagW,
+	}, r1)
+	assertMGetEqual(t, MGetResponse{
+		Type:  MGetResponseTypeVA,
+		Flags: MGetFlagW,
+	}, r2)
+
+	ReleaseMGetResult(mg1)
+	ReleaseMGetResult(mg2)
 }
 
 func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
@@ -90,7 +113,6 @@ func TestPipeline_MGet_Then_MSet_CAS(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, resp)
 
@@ -129,9 +151,7 @@ func TestPipeline_MSet_MGet_With_Values_All_Bytes(t *testing.T) {
 func TestPipeline_MSet_MSet_With_Empty_Bytes(t *testing.T) {
 	p := newPipelineTest(t)
 
-	data := make([]byte, 0)
-
-	setResp, err := p.MSet("key01", data, MSetOptions{})()
+	setResp, err := p.MSet("key01", nil, MSetOptions{})()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, MSetResponse{Type: MSetResponseTypeHD}, setResp)
 
@@ -139,7 +159,6 @@ func TestPipeline_MSet_MSet_With_Empty_Bytes(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, MGetResponse{
 		Type: MGetResponseTypeVA,
-		Data: data,
 	}, resp)
 }
 
@@ -170,7 +189,6 @@ func TestPipeline_MGet_Then_MSet_Then_MDel(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, resp)
 }
@@ -347,7 +365,6 @@ func TestPipeline_Simple_MGet_Call_Fn_Multi_Times(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assertMGetEqual(t, MGetResponse{
 		Type:  MGetResponseTypeVA,
-		Data:  []byte{},
 		Flags: MGetFlagW,
 	}, resp)
 

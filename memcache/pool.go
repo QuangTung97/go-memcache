@@ -29,7 +29,7 @@ var getDataPools = initGetDataPools()
 
 func getByteSlice(size uint64) []byte {
 	if size == 0 {
-		return make([]byte, 0)
+		return nil
 	}
 	if size > poolMaxBytes {
 		return make([]byte, size)
