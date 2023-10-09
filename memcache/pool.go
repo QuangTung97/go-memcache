@@ -66,6 +66,7 @@ func ReleaseGetResponseData(data []byte) {
 	}
 	level := numBits - poolGetDataBaseSizeLog
 
+	data = data[:1]
 	getDataPools[level].Put(&data[0])
 }
 

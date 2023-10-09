@@ -98,6 +98,14 @@ func TestPool_GetByteSlice(t *testing.T) {
 		assert.Equal(t, 32, len(x))
 		assert.Equal(t, 64, cap(x))
 	})
+
+	t.Run("release len zero", func(t *testing.T) {
+		ReleaseGetResponseData(make([]byte, 0, 64))
+
+		x := getByteSlice(32)
+		assert.Equal(t, 32, len(x))
+		assert.Equal(t, 64, cap(x))
+	})
 }
 
 func BenchmarkPool_Get_And_Put(b *testing.B) {
