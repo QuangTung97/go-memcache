@@ -23,6 +23,8 @@ type pipelineSession struct {
 type pipelineCmd struct {
 	cmdType commandType
 
+	getResp MGetResponse
+
 	resp unsafe.Pointer
 	err  error
 
@@ -94,7 +96,8 @@ func parseCommandsForSingleCommandData(
 		switch cmd.cmdType {
 		case commandTypeMGet:
 			resp, err := ps.readMGet()
-			cmd.resp, cmd.err = unsafe.Pointer(&resp), err
+			cmd.getResp = resp
+			cmd.err = err
 
 		case commandTypeMSet:
 			resp, err := ps.readMSet()
@@ -233,12 +236,7 @@ func (c commandIndex) mgetResponseFunc() (MGetResponse, error) {
 	}
 
 	cmd := c.getCmd()
-
-	resp := (*MGetResponse)(cmd.resp)
-	if resp == nil {
-		return MGetResponse{}, cmd.err
-	}
-	return *resp, cmd.err
+	return cmd.getResp, cmd.err
 }
 
 // MGet ...

@@ -823,3 +823,8 @@ func Benchmark_Pipeline_Multi_Threads(b *testing.B) {
 		wg.Wait()
 	}
 }
+
+func TestSizeOfPipelineCommand(t *testing.T) {
+	assert.Equal(t, 88, int(unsafe.Sizeof(pipelineCmd{})))
+	assert.Equal(t, 4400, 88*50)
+}
