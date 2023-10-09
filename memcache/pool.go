@@ -45,6 +45,7 @@ func getByteSlice(size uint64) []byte {
 	return result[:size]
 }
 
+// ReleaseGetResponseData store response data for reuse
 func ReleaseGetResponseData(data []byte) {
 	capacity := cap(data)
 	if capacity == 0 {

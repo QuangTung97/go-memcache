@@ -101,7 +101,7 @@ func TestPool_GetByteSlice(t *testing.T) {
 func Benchmark_Pool_Get_And_Put(b *testing.B) {
 	sum := 0
 	for n := 0; n < b.N; n++ {
-		x := getByteSlice(127)
+		x := getByteSlice(1024 - 1)
 		sum += len(x)
 		ReleaseGetResponseData(x)
 	}
