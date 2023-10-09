@@ -1,7 +1,9 @@
 package memcache
 
 import (
+	"sync/atomic"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -98,11 +100,37 @@ func TestPool_GetByteSlice(t *testing.T) {
 	})
 }
 
-func Benchmark_Pool_Get_And_Put(b *testing.B) {
+func BenchmarkPool_Get_And_Put(b *testing.B) {
 	sum := 0
 	for n := 0; n < b.N; n++ {
 		x := getByteSlice(1024 - 1)
 		sum += len(x)
 		ReleaseGetResponseData(x)
+	}
+}
+
+var pipelineCmdPointer unsafe.Pointer
+
+func BenchmarkPipelineCmd_New(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		cmd := &pipelineCmd{}
+		atomic.StorePointer(&pipelineCmdPointer, unsafe.Pointer(cmd))
+	}
+}
+
+func TestPipelineCmdPool(t *testing.T) {
+	cmd := newPipelineCmdFromPool()
+	cmd.cmdType = commandTypeMGet
+	putPipelineCmdToPool(cmd)
+
+	cmd = newPipelineCmdFromPool()
+	assert.Equal(t, &pipelineCmd{}, cmd)
+}
+
+func BenchmarkPipelineCmd_Pool(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		cmd := newPipelineCmdFromPool()
+		atomic.StorePointer(&pipelineCmdPointer, unsafe.Pointer(cmd))
+		putPipelineCmdToPool(cmd)
 	}
 }
