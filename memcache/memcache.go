@@ -17,10 +17,11 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 		return nil, errors.New("numConns must > 0")
 	}
 
-	conns := make([]*clientConn, 0, numConns)
+	cmdPool := newPipelineCommandListPool(options...)
 
+	conns := make([]*clientConn, 0, numConns)
 	for i := 0; i < numConns; i++ {
-		c := newConn(addr, options...)
+		c := newConn(addr, cmdPool, options...)
 		conns = append(conns, c)
 	}
 

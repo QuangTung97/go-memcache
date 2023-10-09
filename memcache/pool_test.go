@@ -119,18 +119,80 @@ func BenchmarkPipelineCmd_New(b *testing.B) {
 }
 
 func TestPipelineCmdPool(t *testing.T) {
-	cmd := newPipelineCmdFromPool()
+	cmd := getPipelineCmdFromPool()
 	cmd.cmdType = commandTypeMGet
 	putPipelineCmdToPool(cmd)
 
-	cmd = newPipelineCmdFromPool()
+	cmd = getPipelineCmdFromPool()
 	assert.Equal(t, &pipelineCmd{}, cmd)
 }
 
 func BenchmarkPipelineCmd_Pool(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		cmd := newPipelineCmdFromPool()
+		cmd := getPipelineCmdFromPool()
 		atomic.StorePointer(&pipelineCmdPointer, unsafe.Pointer(cmd))
 		putPipelineCmdToPool(cmd)
 	}
+}
+
+func TestPipelineCommandListPool(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		p := newPipelineCommandListPool()
+
+		cmdList := p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		assert.Equal(t, 100, cap(cmdList))
+
+		p.putCommandList(cmdList)
+
+		cmdList = p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		assert.Equal(t, 100, cap(cmdList))
+	})
+
+	t.Run("normal", func(t *testing.T) {
+		p := newPipelineCommandListPool()
+
+		cmdList := p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		assert.Equal(t, 100, cap(cmdList))
+
+		cmdList = append(cmdList, &pipelineCmd{})
+		cmdList = append(cmdList, &pipelineCmd{})
+
+		p.putCommandList(cmdList)
+
+		cmdList = p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		cmdList = cmdList[:2]
+		assert.Nil(t, cmdList[0])
+		assert.Nil(t, cmdList[1])
+	})
+
+	t.Run("put random command list", func(t *testing.T) {
+		p := newPipelineCommandListPool()
+
+		p.putCommandList(make([]*pipelineCmd, 13))
+
+		cmdList := p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		assert.Equal(t, 100, cap(cmdList))
+
+		cmdList = cmdList[:100]
+		assert.Nil(t, cmdList[99])
+	})
+
+	t.Run("other max len", func(t *testing.T) {
+		p := newPipelineCommandListPool(WithMaxCommandsPerBatch(120))
+
+		cmdList := p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		assert.Equal(t, 120, cap(cmdList))
+
+		p.putCommandList(make([]*pipelineCmd, 100))
+
+		cmdList = p.getCommandList()
+		assert.Equal(t, 0, len(cmdList))
+		assert.Equal(t, 120, cap(cmdList))
+	})
 }

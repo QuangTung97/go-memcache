@@ -11,13 +11,14 @@ var ErrAlreadyGotten = errors.New("pipeline error: already gotten")
 
 type pipelineSession struct {
 	pipeline *Pipeline
+	cmdPool  *pipelineCommandListPool
 
 	builder cmdBuilder
 
 	published     bool
 	alreadyWaited bool
 
-	currentCmdList []pipelineCmd
+	currentCmdList []*pipelineCmd
 }
 
 type pipelineCmd struct {
@@ -39,22 +40,25 @@ type Pipeline struct {
 }
 
 func (p *Pipeline) newPipelineSession() *pipelineSession {
+	cmdPool := p.c.cmdPool
+
 	sess := &pipelineSession{
 		pipeline: p,
+		cmdPool:  cmdPool,
 
 		published:     false,
 		alreadyWaited: false,
 
-		currentCmdList: make([]pipelineCmd, 0, 32),
+		currentCmdList: cmdPool.getCommandList(),
 	}
 	initCmdBuilder(&sess.builder, p.c.maxCommandsPerBatch)
 	return sess
 }
 
-func newPipelineCmd(cmdType commandType) pipelineCmd {
-	return pipelineCmd{
-		cmdType: cmdType,
-	}
+func (p *Pipeline) newPipelineCmd(cmdType commandType) *pipelineCmd {
+	cmd := getPipelineCmdFromPool()
+	cmd.cmdType = cmdType
+	return cmd
 }
 
 // Pipeline creates a pipeline
@@ -76,23 +80,20 @@ func (s *pipelineSession) parseCommands(cmdList *commandData) {
 }
 
 func parseCommandsForSingleCommandData(
-	pipelineCommands []pipelineCmd,
+	pipelineCommands []*pipelineCmd,
 	currentCmd *commandData,
 ) {
 	var ps parser
 	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
 
 	if currentCmd.lastErr != nil {
-		for i := range pipelineCommands {
-			cmd := &pipelineCommands[i]
+		for _, cmd := range pipelineCommands {
 			cmd.err = currentCmd.lastErr
 		}
 		return
 	}
 
-	for i := range pipelineCommands {
-		cmd := &pipelineCommands[i]
-
+	for _, cmd := range pipelineCommands {
 		switch cmd.cmdType {
 		case commandTypeMGet:
 			resp, err := ps.readMGet()
@@ -141,7 +142,7 @@ func (s *pipelineSession) waitAndParseCmdData() {
 
 	s.parseCommands(cmdList)
 
-	// clear currentCmdList
+	// clear cmdList
 	for current := cmdList; current != nil; {
 		freeCommandResponseData(current)
 		clearCmd := current
@@ -149,6 +150,9 @@ func (s *pipelineSession) waitAndParseCmdData() {
 		clearCmd.sibling = nil
 	}
 	s.builder.clearCmd()
+
+	// release pipeline command list to the pool
+	s.cmdPool.putCommandList(s.currentCmdList)
 }
 
 func (p *Pipeline) resetPipelineSession() {
@@ -179,31 +183,30 @@ func (s *pipelineSession) pushCommandsIfNotPublished() {
 	}
 }
 
-type commandIndex struct {
-	sess  *pipelineSession
-	index int
+type commandRef struct {
+	sess *pipelineSession
+	cmd  *pipelineCmd
 }
 
-func (c commandIndex) getCmd() *pipelineCmd {
-	return &c.sess.currentCmdList[c.index]
+func (c commandRef) getCmd() *pipelineCmd {
+	return c.cmd
 }
 
-func (c commandIndex) pushAndWaitResponses() {
+func (c commandRef) pushAndWaitResponses() {
 	sess := c.sess
 	sess.pushCommandsIfNotPublished()
 	sess.waitAndParseCmdData()
 }
 
-func (p *Pipeline) addCommand(cmdType commandType) commandIndex {
+func (p *Pipeline) addCommand(cmdType commandType) commandRef {
 	sess := p.getCurrentSession()
-	cmd := newPipelineCmd(cmdType)
+	cmd := p.newPipelineCmd(cmdType)
 
-	index := len(sess.currentCmdList)
 	sess.currentCmdList = append(sess.currentCmdList, cmd)
 
-	return commandIndex{
-		sess:  sess,
-		index: index,
+	return commandRef{
+		sess: sess,
+		cmd:  cmd,
 	}
 }
 
@@ -216,7 +219,7 @@ func (p *Pipeline) Finish() {
 	}
 }
 
-func (c commandIndex) pushAndWaitIfNotRead() error {
+func (c commandRef) pushAndWaitIfNotRead() error {
 	cmd := c.getCmd()
 
 	if cmd.isRead {
@@ -229,28 +232,45 @@ func (c commandIndex) pushAndWaitIfNotRead() error {
 	return nil
 }
 
-func (c commandIndex) mgetResponseFunc() (MGetResponse, error) {
-	err := c.pushAndWaitIfNotRead()
-	if err != nil {
-		return MGetResponse{}, err
-	}
-
-	cmd := c.getCmd()
-	return cmd.getResp, cmd.err
-}
-
 // MGet ...
 func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, error) {
-	if err := validateKeyFormat(key); err != nil {
+	result, err := p.MGetFast(key, opts)
+	if err != nil {
 		return func() (MGetResponse, error) {
 			return MGetResponse{}, err
 		}
 	}
+	return result.Result
+}
 
-	cmd := p.addCommand(commandTypeMGet)
-	cmd.sess.builder.addMGet(key, opts)
+// MGetFast is similar to MGet, but without one more alloc
+func (p *Pipeline) MGetFast(key string, opts MGetOptions) (MGetResult, error) {
+	if err := validateKeyFormat(key); err != nil {
+		return MGetResult{}, err
+	}
 
-	return cmd.mgetResponseFunc
+	cmdRef := p.addCommand(commandTypeMGet)
+	cmdRef.sess.builder.addMGet(key, opts)
+
+	return MGetResult{
+		ref: cmdRef,
+	}, nil
+}
+
+// MGetResult ...
+type MGetResult struct {
+	ref commandRef
+}
+
+// Result returns mget response
+func (r MGetResult) Result() (MGetResponse, error) {
+	err := r.ref.pushAndWaitIfNotRead()
+	if err != nil {
+		return MGetResponse{}, err
+	}
+
+	cmd := r.ref.getCmd()
+	return cmd.getResp, cmd.err
 }
 
 // MSet ...
@@ -261,16 +281,16 @@ func (p *Pipeline) MSet(key string, value []byte, opts MSetOptions) func() (MSet
 		}
 	}
 
-	cmdIndex := p.addCommand(commandTypeMSet)
-	cmdIndex.sess.builder.addMSet(key, value, opts)
+	cmdRef := p.addCommand(commandTypeMSet)
+	cmdRef.sess.builder.addMSet(key, value, opts)
 
 	return func() (MSetResponse, error) {
-		err := cmdIndex.pushAndWaitIfNotRead()
+		err := cmdRef.pushAndWaitIfNotRead()
 		if err != nil {
 			return MSetResponse{}, err
 		}
 
-		cmd := cmdIndex.getCmd()
+		cmd := cmdRef.getCmd()
 
 		resp := (*MSetResponse)(cmd.resp)
 		if resp == nil {
@@ -288,16 +308,16 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 		}
 	}
 
-	cmdIndex := p.addCommand(commandTypeMDel)
-	cmdIndex.sess.builder.addMDel(key, opts)
+	cmdRef := p.addCommand(commandTypeMDel)
+	cmdRef.sess.builder.addMDel(key, opts)
 
 	return func() (MDelResponse, error) {
-		err := cmdIndex.pushAndWaitIfNotRead()
+		err := cmdRef.pushAndWaitIfNotRead()
 		if err != nil {
 			return MDelResponse{}, err
 		}
 
-		cmd := cmdIndex.getCmd()
+		cmd := cmdRef.getCmd()
 
 		resp := (*MDelResponse)(cmd.resp)
 		if resp == nil {
@@ -316,16 +336,16 @@ func (p *Pipeline) Execute() {
 
 // FlushAll ...
 func (p *Pipeline) FlushAll() func() error {
-	cmdIndex := p.addCommand(commandTypeFlushAll)
-	cmdIndex.sess.builder.addFlushAll()
+	cmdRef := p.addCommand(commandTypeFlushAll)
+	cmdRef.sess.builder.addFlushAll()
 
 	return func() error {
-		err := cmdIndex.pushAndWaitIfNotRead()
+		err := cmdRef.pushAndWaitIfNotRead()
 		if err != nil {
 			return err
 		}
 
-		cmd := cmdIndex.getCmd()
+		cmd := cmdRef.getCmd()
 		return cmd.err
 	}
 }

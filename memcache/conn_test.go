@@ -14,7 +14,7 @@ func connFlushAll(c *clientConn) {
 }
 
 func TestConn_Simple_Get_Miss(t *testing.T) {
-	c := newConn("localhost:11211")
+	c := newConn("localhost:11211", newPipelineCommandListPool())
 	defer func() {
 		c.shutdown()
 		c.waitCloseCompleted()
@@ -30,7 +30,7 @@ func TestConn_Simple_Get_Miss(t *testing.T) {
 }
 
 func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
-	c := newConn("localhost:11211")
+	c := newConn("localhost:11211", newPipelineCommandListPool())
 	defer func() {
 		c.shutdown()
 		c.waitCloseCompleted()
@@ -47,7 +47,7 @@ func TestConn_Get_Multi_Keys_All_Missed(t *testing.T) {
 }
 
 func TestConn_Set_Get(t *testing.T) {
-	c := newConn("localhost:11211")
+	c := newConn("localhost:11211", newPipelineCommandListPool())
 	defer func() {
 		c.shutdown()
 		c.waitCloseCompleted()
@@ -77,7 +77,7 @@ func TestConn_Set_Get(t *testing.T) {
 }
 
 func TestConn_Shutdown(t *testing.T) {
-	c := newConn("localhost:11211")
+	c := newConn("localhost:11211", newPipelineCommandListPool())
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
 	c.pushCommand(cmd1)

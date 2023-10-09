@@ -11,6 +11,8 @@ type clientConn struct {
 	wg   sync.WaitGroup
 	core *coreConnection
 
+	cmdPool *pipelineCommandListPool
+
 	maxCommandsPerBatch int
 
 	mut       sync.Mutex
@@ -25,7 +27,9 @@ func sleepWithCloseChan(d time.Duration, closeChan <-chan struct{}) {
 	}
 }
 
-func newConn(addr string, options ...Option) *clientConn {
+func newConn(
+	addr string, cmdPool *pipelineCommandListPool, options ...Option,
+) *clientConn {
 	opts := computeOptions(options...)
 
 	nc, err := netconn.DialNewConn(addr, opts.connOptions...)
@@ -37,6 +41,8 @@ func newConn(addr string, options ...Option) *clientConn {
 	c := &clientConn{
 		core:      newCoreConnection(nc, opts),
 		closeChan: make(chan struct{}),
+
+		cmdPool: cmdPool,
 
 		maxCommandsPerBatch: opts.maxCommandsPerBatch,
 	}

@@ -78,11 +78,53 @@ var pipelineCmdPool = sync.Pool{
 	},
 }
 
-func newPipelineCmdFromPool() *pipelineCmd {
+func getPipelineCmdFromPool() *pipelineCmd {
 	return pipelineCmdPool.Get().(*pipelineCmd)
 }
 
 func putPipelineCmdToPool(cmd *pipelineCmd) {
 	*cmd = pipelineCmd{}
 	pipelineCmdPool.Put(cmd)
+}
+
+// ======================================
+// Pipeline Command List Pool
+// ======================================
+type pipelineCommandListPool struct {
+	listSize int
+	pool     sync.Pool
+}
+
+func newPipelineCommandListPool(options ...Option) *pipelineCommandListPool {
+	opts := computeOptions(options...)
+	listSize := opts.maxCommandsPerBatch
+
+	return &pipelineCommandListPool{
+		listSize: listSize,
+		pool: sync.Pool{
+			New: func() any {
+				data := make([]*pipelineCmd, listSize)
+				return &data[0]
+			},
+		},
+	}
+}
+
+func (p *pipelineCommandListPool) getCommandList() []*pipelineCmd {
+	dataPtr := p.pool.Get().(**pipelineCmd)
+	data := unsafe.Slice(dataPtr, p.listSize)
+	return data[:0]
+}
+
+func (p *pipelineCommandListPool) putCommandList(cmdList []*pipelineCmd) {
+	if cap(cmdList) != p.listSize {
+		return
+	}
+
+	for i := range cmdList {
+		cmdList[i] = nil
+	}
+
+	data := cmdList[:1]
+	p.pool.Put(&data[0])
 }
