@@ -164,7 +164,7 @@ func (r *responseReader) handleGetNum(data []byte) []byte {
 			r.dataLen += uint64(r.tmpData[i] - '0')
 		}
 
-		r.currentBinary = make([]byte, r.dataLen)
+		r.currentBinary = getByteSlice(r.dataLen)
 		r.currentIndex = 0
 
 		r.dataLen += 2 // CR + LF

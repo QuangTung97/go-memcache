@@ -2,11 +2,12 @@ package memcache
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestResponseReader_Empty(t *testing.T) {
@@ -234,7 +235,7 @@ func TestResponseReader_With_Data_Zero(t *testing.T) {
 
 	assert.Equal(t, []byte(expected), cmd.responseData)
 	assert.Equal(t, [][]byte{
-		[]byte(""),
+		nil,
 	}, cmd.responseBinaries)
 }
 
