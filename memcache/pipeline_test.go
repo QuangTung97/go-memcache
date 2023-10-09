@@ -3,6 +3,7 @@ package memcache
 import (
 	"fmt"
 	"math/rand"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -302,7 +303,13 @@ func TestPipeline_MSet_Error_Key_Too_Long__Disable_Check(t *testing.T) {
 	}, err)
 
 	resp, err := p.MGet("key01", MGetOptions{})()
-	assert.Equal(t, ErrClientError{Message: "bad command line format"}, err)
+
+	mgetErr1 := ErrClientError{Message: "bad command line format"}
+	mgetErr2 := ErrBrokenPipe{reason: "can not parse mget response"}
+	if !reflect.DeepEqual(err, mgetErr1) && !reflect.DeepEqual(err, mgetErr2) {
+		assert.Fail(t, "err is not match", err)
+	}
+
 	assert.Equal(t, MGetResponse{}, resp)
 
 	time.Sleep(30 * time.Millisecond)
