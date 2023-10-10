@@ -20,7 +20,7 @@ func TestBuilder_AddMGet(t *testing.T) {
 
 	assert.Equal(t, 1, cmd.cmdCount)
 	assert.Equal(t, "mg some:key v\r\n", string(cmd.requestData))
-	assert.Equal(t, 1, cap(cmd.responseBinaries))
+	assert.Equal(t, 16, cap(cmd.responseBinaries))
 }
 
 func TestBuilder_AddMGet_With_N(t *testing.T) {
@@ -30,7 +30,7 @@ func TestBuilder_AddMGet_With_N(t *testing.T) {
 
 	assert.Equal(t, 1, cmd.cmdCount)
 	assert.Equal(t, "mg some:key N13 v\r\n", string(cmd.requestData))
-	assert.Equal(t, 1, cap(cmd.responseBinaries))
+	assert.Equal(t, 16, cap(cmd.responseBinaries))
 }
 
 func TestBuilder_AddMGet_And_MSet_Multi_Times(t *testing.T) {
@@ -51,7 +51,7 @@ func TestBuilder_AddMGet_And_MSet_Multi_Times(t *testing.T) {
 			data:   []byte("data01\r\n"),
 		},
 	}, traverseRequestBinaries(cmd))
-	assert.Equal(t, 2, cap(cmd.responseBinaries))
+	assert.Equal(t, 16, cap(cmd.responseBinaries))
 
 	initCmdBuilder(b, 1000)
 	assert.Equal(t, 0, cap(b.getCurrentCommandForTest().responseBinaries))
@@ -64,7 +64,7 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 
 	assert.Equal(t, 1, cmd.cmdCount)
 	assert.Equal(t, "mg some:key c N13 v\r\n", string(cmd.requestData))
-	assert.Equal(t, 1, cap(cmd.responseBinaries))
+	assert.Equal(t, 16, cap(cmd.responseBinaries))
 
 	freeCommandResponseData(cmd)
 
@@ -76,7 +76,7 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 
 	assert.Equal(t, 1, cmd.cmdCount)
 	assert.Equal(t, "mg some:key c N13 v\r\n", string(cmd.requestData))
-	assert.Equal(t, 1, cap(cmd.responseBinaries))
+	assert.Equal(t, 16, cap(cmd.responseBinaries))
 }
 
 func traverseRequestBinaries(cmd *commandData) []requestBinaryEntry {
@@ -375,7 +375,7 @@ func TestBuilder_AddMGet_Then_Clear(t *testing.T) {
 
 	assert.Equal(t, 1, cmd.cmdCount)
 	assert.Equal(t, "mg some:key v\r\n", string(cmd.requestData))
-	assert.Equal(t, 1, cap(cmd.responseBinaries))
+	assert.Equal(t, 16, cap(cmd.responseBinaries))
 
 	b.clearCmd()
 
@@ -406,7 +406,7 @@ func TestBuilder_With_Max_Count(t *testing.T) {
 
 		assert.Equal(t, 2, cmd.cmdCount)
 		assert.Equal(t, "mg key01 v\r\nms key02 7\r\n", string(cmd.requestData))
-		assert.Equal(t, 1, cap(cmd.responseBinaries))
+		assert.Equal(t, 16, cap(cmd.responseBinaries))
 		assert.Equal(t, []requestBinaryEntry{
 			{
 				offset: len("mg key01 v\r\nms key02 7\r\n"),
@@ -417,7 +417,7 @@ func TestBuilder_With_Max_Count(t *testing.T) {
 		cmd = cmd.sibling
 		assert.Equal(t, 2, cmd.cmdCount)
 		assert.Equal(t, "mg key03 v\r\nmg key04 v\r\n", string(cmd.requestData))
-		assert.Equal(t, 2, cap(cmd.responseBinaries))
+		assert.Equal(t, 16, cap(cmd.responseBinaries))
 
 		cmd = cmd.sibling
 		assert.Equal(t, 1, cmd.cmdCount)

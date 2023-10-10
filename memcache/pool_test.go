@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"unsafe"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestPoolMaxSize(t *testing.T) {
-	assert.Equal(t, 64, poolBytesBaseSize)
+	assert.Equal(t, 64, 1<<poolBytesBaseSizeLog)
 	assert.Equal(t, 1024*1024, poolMaxBytes)
 }
 
@@ -202,5 +203,102 @@ func TestPipelineCommandListPool(t *testing.T) {
 		cmdList = p.getCommandList()
 		assert.Equal(t, 0, len(cmdList))
 		assert.Equal(t, 120, cap(cmdList))
+	})
+}
+
+func TestResponseBinaryPool(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		data := getResponseBinaries(32)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 32, cap(data))
+
+		data = getResponseBinaries(33)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 64, cap(data))
+
+		data = getResponseBinaries(63)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 64, cap(data))
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		data := getResponseBinaries(0)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 0, cap(data))
+	})
+
+	t.Run("one", func(t *testing.T) {
+		data := getResponseBinaries(1)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 16, cap(data))
+	})
+
+	t.Run("smaller than 16", func(t *testing.T) {
+		data := getResponseBinaries(15)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 16, cap(data))
+	})
+
+	t.Run("bigger than max", func(t *testing.T) {
+		data := getResponseBinaries(513)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 513, cap(data))
+
+		data = getResponseBinaries(511)
+		assert.Equal(t, 0, len(data))
+		assert.Equal(t, 512, cap(data))
+	})
+
+	t.Run("max len", func(t *testing.T) {
+		assert.Equal(t, 512, poolResponseBinaryMaxSize)
+	})
+
+	t.Run("put with cap zero", func(t *testing.T) {
+		putResponseBinaries(nil)
+	})
+
+	t.Run("put with cap bigger than max", func(t *testing.T) {
+		putResponseBinaries(make([][]byte, 0, poolResponseBinaryMaxSize+1))
+
+		x := getResponseBinaries(poolResponseBinaryMaxSize)
+		assert.Equal(t, 0, len(x))
+		assert.Equal(t, 512, cap(x))
+	})
+
+	t.Run("put with cap = 2x max", func(t *testing.T) {
+		putResponseBinaries(make([][]byte, 0, 2*poolResponseBinaryMaxSize))
+
+		x := getResponseBinaries(poolResponseBinaryMaxSize)
+		assert.Equal(t, 0, len(x))
+		assert.Equal(t, 512, cap(x))
+	})
+
+	t.Run("put normal", func(t *testing.T) {
+		x := getResponseBinaries(31)
+		assert.Equal(t, 32, cap(x))
+
+		x = append(x, []byte("hello"))
+		putResponseBinaries(x)
+
+		x = getResponseBinaries(31)
+		assert.Equal(t, 32, cap(x))
+		x = x[:1]
+		fmt.Println("DATA:", string(x[0]))
+	})
+
+	t.Run("put with cap not is power of 2", func(t *testing.T) {
+		putResponseBinaries(make([][]byte, 0, 17))
+
+		x := getResponseBinaries(31)
+		assert.Equal(t, 0, len(x))
+		assert.Equal(t, 32, cap(x))
+	})
+
+	t.Run("put with cap smaller than 16", func(t *testing.T) {
+		putResponseBinaries(make([][]byte, 0, 8))
+
+		x := getResponseBinaries(7)
+		assert.Equal(t, 0, len(x))
+		assert.Equal(t, 16, cap(x))
 	})
 }

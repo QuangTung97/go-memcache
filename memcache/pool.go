@@ -8,9 +8,8 @@ import (
 
 const (
 	poolBytesBaseSizeLog = 6
-	poolBytesBaseSize    = 1 << poolBytesBaseSizeLog
 	poolBytesNumLevels   = 15
-	poolMaxBytes         = poolBytesBaseSize * (1 << (poolBytesNumLevels - 1))
+	poolMaxBytes         = 1 << (poolBytesBaseSizeLog + poolBytesNumLevels - 1)
 )
 
 func initGetDataPools() []sync.Pool {
@@ -132,4 +131,73 @@ func (p *pipelineCommandListPool) putCommandList(cmdList []*pipelineCmd) {
 
 	data := cmdList[:1]
 	p.pool.Put(&data[0])
+}
+
+// ======================================
+// Response Binary Pool
+// ======================================
+const (
+	poolResponseBinaryBaseSizeLog = 4
+	poolResponseBinaryLevels      = 6
+	poolResponseBinaryMaxSize     = 1 << (poolResponseBinaryBaseSizeLog + poolResponseBinaryLevels - 1)
+)
+
+func initResponseBinaryPools() []sync.Pool {
+	result := make([]sync.Pool, poolResponseBinaryLevels)
+	for i := range result {
+		index := i
+		result[i] = sync.Pool{
+			New: func() any {
+				data := make([][]byte, 1<<(index+poolResponseBinaryBaseSizeLog))
+				return &data[0]
+			},
+		}
+	}
+	return result
+}
+
+var responseBinaryPools = initResponseBinaryPools()
+
+func getResponseBinaries(size uint32) [][]byte {
+	if size == 0 {
+		return nil
+	}
+	if size > poolResponseBinaryMaxSize {
+		return make([][]byte, 0, size)
+	}
+	numBits := bits.Len32(size - 1)
+
+	level := 0
+	if numBits > poolResponseBinaryBaseSizeLog {
+		level = numBits - poolResponseBinaryBaseSizeLog
+	}
+
+	dataPtr := responseBinaryPools[level].Get().(*[]byte)
+	data := unsafe.Slice(dataPtr, 1<<(level+poolResponseBinaryBaseSizeLog))
+
+	return data[:0]
+}
+
+func putResponseBinaries(data [][]byte) {
+	capacity := cap(data)
+	if capacity == 0 {
+		return
+	}
+
+	if capacity > poolResponseBinaryMaxSize {
+		return
+	}
+
+	numBits := bits.Len32(uint32(capacity - 1))
+	if capacity != (1 << numBits) {
+		return
+	}
+
+	if numBits < poolResponseBinaryBaseSizeLog {
+		return
+	}
+	level := numBits - poolResponseBinaryBaseSizeLog
+
+	data = data[:1]
+	responseBinaryPools[level].Put(&data[0])
 }

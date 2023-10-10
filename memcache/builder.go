@@ -176,7 +176,7 @@ func (b *cmdBuilder) clearCmd() {
 }
 
 func (b *cmdBuilder) internalResetMGetCount() {
-	b.cmd.responseBinaries = make([][]byte, 0, b.mgetCount)
+	b.cmd.responseBinaries = getResponseBinaries(uint32(b.mgetCount))
 	b.mgetCount = 0
 }
 
