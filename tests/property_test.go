@@ -134,6 +134,8 @@ func (p *propertyTest) doGetSingleLoop(r *rand.Rand) {
 				panic("Mismatch key")
 			}
 
+			memcache.ReleaseGetResponseData(resp.Data)
+
 			continue
 		}
 
