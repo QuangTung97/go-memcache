@@ -2,6 +2,7 @@ package memcache
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -12,7 +13,9 @@ type healthCheckService struct {
 
 	prevSequence uint64
 
-	wg      sync.WaitGroup
+	wg sync.WaitGroup
+
+	closed  atomic.Bool
 	closeCh chan struct{}
 }
 
@@ -66,6 +69,9 @@ func (s *healthCheckService) runInBackground() {
 }
 
 func (s *healthCheckService) shutdown() {
-	close(s.closeCh)
-	s.wg.Wait()
+	prevClosed := s.closed.Swap(true)
+	if !prevClosed {
+		close(s.closeCh)
+		s.wg.Wait()
+	}
 }

@@ -179,7 +179,7 @@ func TestHealthCheckService_InBackground(t *testing.T) {
 		assert.Equal(t, "version\r\n", string(s.recorder3.data))
 	})
 
-	t.Run("two times", func(t *testing.T) {
+	t.Run("call two times", func(t *testing.T) {
 		s := newHealthCheckTest(200 * time.Millisecond)
 		s.nextVal = 122
 
@@ -194,6 +194,18 @@ func TestHealthCheckService_InBackground(t *testing.T) {
 		assert.Equal(t, "version\r\n", string(s.recorder1.data))
 		assert.Equal(t, "version\r\n", string(s.recorder2.data))
 		assert.Equal(t, "version\r\n", string(s.recorder3.data))
+	})
+
+	t.Run("shutdown two times", func(t *testing.T) {
+		s := newHealthCheckTest(200 * time.Millisecond)
+		s.nextVal = 122
+
+		s.svc.runInBackground()
+
+		time.Sleep(250 * time.Millisecond)
+
+		s.svc.shutdown()
+		s.svc.shutdown()
 	})
 }
 
