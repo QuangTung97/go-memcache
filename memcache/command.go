@@ -108,9 +108,11 @@ func (c *commandData) writeToWriter(w io.Writer) error {
 func freeCommandResponseData(cmd *commandData) {
 	responseBytesPool.put(cmd.responseData)
 	cmd.responseData = nil
+
 	for i := range cmd.responseBinaries {
 		cmd.responseBinaries[i] = nil
 	}
+	putResponseBinaries(cmd.responseBinaries)
 	cmd.responseBinaries = nil
 }
 
