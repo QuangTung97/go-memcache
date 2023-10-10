@@ -561,3 +561,22 @@ func TestClient__With_WriteLimit__And_Max_Command_Count(t *testing.T) {
 	assert.Equal(t, uint64(8), send.selector.writeLimiter.cmdWriteCount)
 	assert.Equal(t, uint64(8), send.selector.writeLimiter.cmdReadCount.Load())
 }
+
+func TestClient_Health_Check(t *testing.T) {
+	dialFunc, recorder, startChan := newDialFuncWithRecorder()
+	close(startChan)
+
+	c, err := New(
+		"localhost:11211", 1,
+		WithHealthCheckDuration(200*time.Millisecond),
+		WithDialFunc(dialFunc),
+	)
+	assert.Equal(t, nil, err)
+
+	time.Sleep(300 * time.Millisecond)
+
+	err = c.Close()
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, "version\r\n", string(recorder.data))
+}
