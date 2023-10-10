@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-// ErrAlreadyGotten ...
+// ErrAlreadyGotten returns when the callback functions of MGet, MSet, etc. is called more than once
 var ErrAlreadyGotten = errors.New("pipeline error: already gotten")
 
 type pipelineSession struct {
