@@ -9,7 +9,7 @@ import (
 )
 
 func TestPoolMaxSize(t *testing.T) {
-	assert.Equal(t, 64, poolGetDataBaseSize)
+	assert.Equal(t, 64, poolBytesBaseSize)
 	assert.Equal(t, 128*1024, poolMaxBytes)
 }
 

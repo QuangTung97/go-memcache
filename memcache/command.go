@@ -54,12 +54,19 @@ type commandData struct {
 	requestData  []byte
 	responseData []byte
 
+	requestBinaries  *requestBinaryEntry
 	responseBinaries [][]byte // mget binary responses
 
 	conn *senderConnection
 
 	lastErr error
 	ch      chan error
+}
+
+type requestBinaryEntry struct {
+	next   *requestBinaryEntry // a linked list of binary entries
+	offset int
+	data   []byte
 }
 
 func newCommandChannel() chan error {

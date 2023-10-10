@@ -5,6 +5,8 @@ type cmdBuilder struct {
 	cmdList     *commandData
 	lastPointer **commandData
 
+	lastRequestEntry **requestBinaryEntry
+
 	maxCmdCount int
 	mgetCount   int
 }
@@ -29,13 +31,19 @@ type MDelOptions struct {
 }
 
 func initCmdBuilder(b *cmdBuilder, maxCmdCount int) {
-	b.cmd = newCommand()
-	b.lastPointer = &b.cmd.sibling
+	b.lastPointer = &b.cmdList
 
-	b.cmdList = b.cmd
+	b.addNewCommand()
 
 	b.mgetCount = 0
 	b.maxCmdCount = maxCmdCount
+}
+
+func (b *cmdBuilder) addNewCommand() {
+	b.cmd = newCommand()
+	*b.lastPointer = b.cmd
+	b.lastPointer = &b.cmd.sibling
+	b.lastRequestEntry = &b.cmd.requestBinaries
 }
 
 func appendNumber(data []byte, n uint64) []byte {
@@ -64,9 +72,7 @@ func appendNumber(data []byte, n uint64) []byte {
 func (b *cmdBuilder) internalIncreaseCount() {
 	if b.cmd.cmdCount >= b.maxCmdCount {
 		b.internalResetMGetCount()
-		b.cmd = newCommand()
-		*b.lastPointer = b.cmd
-		b.lastPointer = &b.cmd.sibling
+		b.addNewCommand()
 	}
 	b.cmd.cmdCount++
 }
@@ -110,8 +116,17 @@ func (b *cmdBuilder) addMSet(key string, data []byte, opts MSetOptions) {
 
 	b.cmd.requestData = append(b.cmd.requestData, "\r\n"...)
 
-	b.cmd.requestData = append(b.cmd.requestData, data...)
-	b.cmd.requestData = append(b.cmd.requestData, "\r\n"...)
+	dataLen := uint64(len(data))
+	binaryData := getByteSlice(dataLen + 2)
+	copy(binaryData, data)
+	copy(binaryData[dataLen:], "\r\n")
+
+	reqEntry := &requestBinaryEntry{
+		offset: len(b.cmd.requestData),
+		data:   binaryData,
+	}
+	*b.lastRequestEntry = reqEntry
+	b.lastRequestEntry = &reqEntry.next
 }
 
 func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
