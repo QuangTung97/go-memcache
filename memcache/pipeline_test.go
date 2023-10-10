@@ -17,7 +17,10 @@ import (
 )
 
 func pipelineFlushAll(p *Pipeline) {
-	connFlushAll(p.conn)
+	err := p.FlushAll()()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func assertMGetEqual(t *testing.T, a, b MGetResponse) {
