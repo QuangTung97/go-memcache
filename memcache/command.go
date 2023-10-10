@@ -12,6 +12,7 @@ const (
 	commandTypeMSet
 	commandTypeMDel
 	commandTypeFlushAll
+	commandTypeVersion
 )
 
 // =====================

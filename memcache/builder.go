@@ -152,6 +152,11 @@ func (b *cmdBuilder) addMDel(key string, opts MDelOptions) {
 	b.cmd.requestData = append(b.cmd.requestData, "\r\n"...)
 }
 
+func (b *cmdBuilder) addVersion() {
+	b.internalIncreaseCount()
+	b.cmd.requestData = append(b.cmd.requestData, "version\r\n"...)
+}
+
 func (b *cmdBuilder) addFlushAll() {
 	b.internalIncreaseCount()
 	b.cmd.requestData = append(b.cmd.requestData, "flush_all\r\n"...)

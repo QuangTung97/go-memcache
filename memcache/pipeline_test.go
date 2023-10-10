@@ -1,8 +1,10 @@
 package memcache
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"reflect"
 	"strings"
 	"sync"
@@ -698,6 +700,79 @@ func TestPipeline_Many_Commands_Cause_Deadlock(t *testing.T) {
 			Data: []byte("some data"),
 		}, resp)
 	}
+}
+
+func TestPipeline_Version_Command(t *testing.T) {
+	p := newPipelineTest(t)
+
+	resp, err := p.Version()()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, VersionResponse{
+		Version: "1.6.18",
+	}, resp)
+}
+
+func TestPipeline_Version_Command__Get_Multi_Times(t *testing.T) {
+	p := newPipelineTest(t)
+
+	fn := p.Version()
+
+	resp, err := fn()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, VersionResponse{
+		Version: "1.6.18",
+	}, resp)
+
+	resp, err = fn()
+	assert.Equal(t, ErrAlreadyGotten, err)
+	assert.Equal(t, VersionResponse{}, resp)
+}
+
+func TestPipeline_Version_Command__Between_Others(t *testing.T) {
+	p := newPipelineTest(t)
+
+	fn1 := p.MSet("key01", []byte("data 01"), MSetOptions{})
+	fn2 := p.Version()
+	fn3 := p.MGet("key01", MGetOptions{})
+
+	setResp, err := fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MSetResponse{
+		Type: MSetResponseTypeHD,
+	}, setResp)
+
+	versionResp, err := fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, VersionResponse{
+		Version: "1.6.18",
+	}, versionResp)
+
+	getResp, err := fn3()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, MGetResponse{
+		Type: MGetResponseTypeVA,
+		Data: []byte("data 01"),
+	}, getResp)
+}
+
+func TestPipeline_Version_Command__Conn_Error(t *testing.T) {
+	c, err := New("localhost:11200", 1)
+	assert.Equal(t, nil, err)
+
+	t.Cleanup(func() { _ = c.Close() })
+
+	p := c.Pipeline()
+	t.Cleanup(p.Finish)
+
+	resp, err := p.Version()()
+
+	var netError *net.OpError
+	isNetErr := errors.As(err, &netError)
+
+	assert.Equal(t, true, isNetErr)
+	assert.Equal(t, "dial", netError.Op)
+
+	assert.Equal(t, VersionResponse{}, resp)
 }
 
 func TestPipeline_Not_Blocking__When_Wait_For_Response__After_Close(t *testing.T) {
