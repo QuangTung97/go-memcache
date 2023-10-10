@@ -9,7 +9,7 @@ import (
 const (
 	poolBytesBaseSizeLog = 6
 	poolBytesBaseSize    = 1 << poolBytesBaseSizeLog
-	poolBytesNumLevels   = 12
+	poolBytesNumLevels   = 15
 	poolMaxBytes         = poolBytesBaseSize * (1 << (poolBytesNumLevels - 1))
 )
 

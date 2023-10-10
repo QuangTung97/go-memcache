@@ -10,7 +10,7 @@ import (
 
 func TestPoolMaxSize(t *testing.T) {
 	assert.Equal(t, 64, poolBytesBaseSize)
-	assert.Equal(t, 128*1024, poolMaxBytes)
+	assert.Equal(t, 1024*1024, poolMaxBytes)
 }
 
 func TestPool_GetByteSlice(t *testing.T) {
@@ -53,9 +53,9 @@ func TestPool_GetByteSlice(t *testing.T) {
 	})
 
 	t.Run("bigger than max", func(t *testing.T) {
-		x := getByteSlice(128*1024 + 1)
-		assert.Equal(t, 128*1024+1, len(x))
-		assert.Equal(t, 128*1024+1, cap(x))
+		x := getByteSlice(1024*1024 + 1)
+		assert.Equal(t, 1024*1024+1, len(x))
+		assert.Equal(t, 1024*1024+1, cap(x))
 	})
 
 	t.Run("get and put and get", func(t *testing.T) {
@@ -76,11 +76,11 @@ func TestPool_GetByteSlice(t *testing.T) {
 	})
 
 	t.Run("release bigger than max", func(t *testing.T) {
-		ReleaseGetResponseData(make([]byte, 128*1024+1))
+		ReleaseGetResponseData(make([]byte, 1024*1024+1))
 
-		x := getByteSlice(128*1024 - 1)
-		assert.Equal(t, 128*1024-1, len(x))
-		assert.Equal(t, 128*1024, cap(x))
+		x := getByteSlice(1024*1024 - 1)
+		assert.Equal(t, 1024*1024-1, len(x))
+		assert.Equal(t, 1024*1024, cap(x))
 	})
 
 	t.Run("release not align", func(t *testing.T) {
