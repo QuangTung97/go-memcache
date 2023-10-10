@@ -7,8 +7,11 @@ import (
 )
 
 type healthCheckService struct {
-	conns         []*clientConn
-	getNextFunc   func() uint64
+	conns []*clientConn
+
+	getNextFunc func() uint64
+	addNextFunc func(delta uint64) uint64
+
 	sleepDuration time.Duration
 
 	prevSequence uint64
@@ -22,11 +25,15 @@ type healthCheckService struct {
 func newHealthCheckService(
 	conns []*clientConn,
 	getNextFunc func() uint64,
+	addNextFunc func(delta uint64) uint64,
 	sleepDuration time.Duration,
 ) *healthCheckService {
 	return &healthCheckService{
-		conns:         conns,
-		getNextFunc:   getNextFunc,
+		conns: conns,
+
+		getNextFunc: getNextFunc,
+		addNextFunc: addNextFunc,
+
 		sleepDuration: sleepDuration,
 
 		prevSequence: 0,
@@ -36,21 +43,25 @@ func newHealthCheckService(
 }
 
 func (s *healthCheckService) runSingleLoop() {
+	connLen := uint64(len(s.conns))
+	nextBound := s.prevSequence + connLen
+
 	nextSeq := s.getNextFunc()
-	if nextSeq >= s.prevSequence+uint64(len(s.conns)) {
+	if nextSeq >= nextBound {
 		s.prevSequence = nextSeq
 		return
 	}
 
-	startIndex := nextSeq - s.prevSequence
+	for s.prevSequence < nextBound {
+		s.prevSequence = s.addNextFunc(1)
 
-	for _, conn := range s.conns[startIndex:] {
-		pipe := newPipeline(conn)
+		index := s.prevSequence % connLen
+		conn := s.conns[index]
+
+		pipe := newPipeline(conn, nil)
 		_, _ = pipe.Version()()
 		pipe.Finish()
 	}
-
-	s.prevSequence = s.getNextFunc()
 }
 
 func (s *healthCheckService) runInBackground() {

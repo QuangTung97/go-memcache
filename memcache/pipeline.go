@@ -34,13 +34,18 @@ type pipelineCmd struct {
 
 // Pipeline should NOT be used concurrently
 type Pipeline struct {
-	currentSession *pipelineSession
+	client *Client
+	conn   *clientConn
 
-	c *clientConn
+	currentSession *pipelineSession
 }
 
 func (p *Pipeline) newPipelineSession() *pipelineSession {
-	cmdPool := p.c.cmdPool
+	if p.conn == nil {
+		p.conn = p.client.getNextConn()
+	}
+
+	cmdPool := p.conn.cmdPool
 
 	sess := &pipelineSession{
 		pipeline: p,
@@ -51,7 +56,7 @@ func (p *Pipeline) newPipelineSession() *pipelineSession {
 
 		currentCmdList: cmdPool.getCommandList(),
 	}
-	initCmdBuilder(&sess.builder, p.c.maxCommandsPerBatch)
+	initCmdBuilder(&sess.builder, p.conn.maxCommandsPerBatch)
 	return sess
 }
 
@@ -61,16 +66,18 @@ func (p *Pipeline) newPipelineCmd(cmdType commandType) *pipelineCmd {
 	return cmd
 }
 
-func newPipeline(conn *clientConn) *Pipeline {
+func newPipeline(conn *clientConn, client *Client) *Pipeline {
 	return &Pipeline{
-		c:              conn,
+		client: client,
+		conn:   conn,
+
 		currentSession: nil,
 	}
 }
 
 // Pipeline creates a pipeline
 func (c *Client) Pipeline() *Pipeline {
-	return newPipeline(c.getNextConn())
+	return newPipeline(nil, c)
 }
 
 func (s *pipelineSession) parseCommands(cmdList *commandData) {
@@ -178,7 +185,7 @@ func (p *Pipeline) getCurrentSession() *pipelineSession {
 
 func (s *pipelineSession) pushCommands(cmd *commandData) {
 	pipe := s.pipeline
-	pipe.c.pushCommand(cmd)
+	pipe.conn.pushCommand(cmd)
 }
 
 func (s *pipelineSession) pushCommandsIfNotPublished() {

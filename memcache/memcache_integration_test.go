@@ -580,3 +580,15 @@ func TestClient_Health_Check(t *testing.T) {
 
 	assert.Equal(t, "version\r\n", string(recorder.data))
 }
+
+func TestClient_NewPipeline_Without_Exec_Anything__Conn_Seq_Should_Not_Change(t *testing.T) {
+	c, err := New("localhost:11211", 2)
+	assert.Equal(t, nil, err)
+
+	t.Cleanup(func() { _ = c.Close() })
+
+	pipe := c.Pipeline()
+	pipe.Finish()
+
+	assert.Equal(t, uint64(0), c.next.Load())
+}

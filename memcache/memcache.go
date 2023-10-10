@@ -33,7 +33,12 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 
 	opts := computeOptions(options...)
 
-	client.health = newHealthCheckService(conns, client.next.Load, opts.healthCheckDuration)
+	client.health = newHealthCheckService(
+		conns,
+		client.next.Load,
+		client.next.Add,
+		opts.healthCheckDuration,
+	)
 	client.health.runInBackground()
 
 	return client, nil
