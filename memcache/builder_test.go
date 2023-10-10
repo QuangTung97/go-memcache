@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,9 +42,15 @@ func TestBuilder_AddMGet_And_MSet_Multi_Times(t *testing.T) {
 
 	assert.Equal(t, 3, cmd.cmdCount)
 	assert.Equal(t,
-		"mg some:key01 N13 v\r\nmg some:key02 N14 v\r\nms key03 6\r\ndata01\r\n",
+		"mg some:key01 N13 v\r\nmg some:key02 N14 v\r\nms key03 6\r\n",
 		string(cmd.requestData),
 	)
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("data01\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
 	assert.Equal(t, 2, cap(cmd.responseBinaries))
 
 	initCmdBuilder(b, 1000)
@@ -72,13 +79,29 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 	assert.Equal(t, 1, cap(cmd.responseBinaries))
 }
 
+func traverseRequestBinaries(cmd *commandData) []requestBinaryEntry {
+	result := make([]requestBinaryEntry, 0)
+	for current := cmd.requestBinaries; current != nil; current = current.next {
+		e := *current
+		e.next = nil
+		result = append(result, e)
+	}
+	return result
+}
+
 func TestBuilder_AddMSet(t *testing.T) {
 	b := newCmdBuilder()
 	b.addMSet("some:key", []byte("SOME-VALUE"), MSetOptions{})
 	cmd := b.finish()
 
 	assert.Equal(t, 1, cmd.cmdCount)
-	assert.Equal(t, "ms some:key 10\r\nSOME-VALUE\r\n", string(cmd.requestData))
+	assert.Equal(t, "ms some:key 10\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms some:key 10\r\n"),
+			data:   []byte("SOME-VALUE\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
 }
 
 func TestBuilder_AddMSet_Length_Zero(t *testing.T) {
@@ -87,7 +110,13 @@ func TestBuilder_AddMSet_Length_Zero(t *testing.T) {
 	cmd := b.finish()
 
 	assert.Equal(t, 1, cmd.cmdCount)
-	assert.Equal(t, "ms some:key 0\r\n\r\n", string(cmd.requestData))
+	assert.Equal(t, "ms some:key 0\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
 	assert.Equal(t, 0, cap(cmd.responseBinaries))
 }
 
@@ -99,7 +128,13 @@ func TestBuilder_AddMSet_WithCAS(t *testing.T) {
 	cmd := b.finish()
 
 	assert.Equal(t, 1, cmd.cmdCount)
-	assert.Equal(t, "ms some:key 10 C1234\r\nSOME-VALUE\r\n", string(cmd.requestData))
+	assert.Equal(t, "ms some:key 10 C1234\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("SOME-VALUE\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
 	assert.Equal(t, 0, cap(cmd.responseBinaries))
 }
 
@@ -111,7 +146,134 @@ func TestBuilder_AddMSet_With_TTL(t *testing.T) {
 	cmd := b.finish()
 
 	assert.Equal(t, 1, cmd.cmdCount)
-	assert.Equal(t, "ms some:key 10 T23\r\nSOME-VALUE\r\n", string(cmd.requestData))
+	assert.Equal(t, "ms some:key 10 T23\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("SOME-VALUE\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
+}
+
+func TestBuilder_AddMSet_Multi(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMSet("some:key", []byte("SOME-VALUE"), MSetOptions{
+		TTL: 23,
+	})
+	b.addMSet("key02", []byte("VALUE02"), MSetOptions{
+		CAS: 88,
+	})
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms some:key 10 T23\r\nms key02 7 C88\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms some:key 10 T23\r\n"),
+			data:   []byte("SOME-VALUE\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("VALUE02\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
+}
+
+func TestBuilder_AddMSet_Multi__Exceed_Max_Count(t *testing.T) {
+	b := newCmdBuilderWithMax(2)
+	b.addMSet("some:key", []byte("SOME-VALUE"), MSetOptions{
+		TTL: 23,
+	})
+	b.addMSet("key02", []byte("VALUE02"), MSetOptions{
+		CAS: 88,
+	})
+	b.addMSet("key03", []byte("VALUE03"), MSetOptions{})
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms some:key 10 T23\r\nms key02 7 C88\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms some:key 10 T23\r\n"),
+			data:   []byte("SOME-VALUE\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("VALUE02\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
+
+	cmd = cmd.sibling
+	assert.Equal(t, 1, cmd.cmdCount)
+	assert.Equal(t, "ms key03 7\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("VALUE03\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
+
+	assert.Nil(t, cmd.sibling)
+}
+
+func TestBuilder_AddMSet__Check_Request_Binary_Capacity(t *testing.T) {
+	b := newCmdBuilderWithMax(2)
+
+	data := []byte(strings.Repeat("A", 125))
+	b.addMSet("key01", data, MSetOptions{})
+
+	data = append(data, 'B', 'C')
+	b.addMSet("key02", data, MSetOptions{})
+
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms key01 125\r\nms key02 127\r\n", string(cmd.requestData))
+
+	entries := traverseRequestBinaries(cmd)
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms key01 126\r\n"),
+			data:   []byte(strings.Repeat("A", 125) + "\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte(strings.Repeat("A", 125) + "BC\r\n"),
+		},
+	}, entries)
+
+	assert.Equal(t, 128, cap(entries[0].data))
+	assert.Equal(t, 256, cap(entries[1].data))
+}
+
+func TestBuilder_AddMSet__Check_Request_Binary_Capacity__At_Boundary(t *testing.T) {
+	b := newCmdBuilderWithMax(2)
+
+	data := []byte(strings.Repeat("A", 126))
+	b.addMSet("key01", data, MSetOptions{})
+
+	data = append(data, 'B')
+	b.addMSet("key02", data, MSetOptions{})
+
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms key01 126\r\nms key02 127\r\n", string(cmd.requestData))
+
+	entries := traverseRequestBinaries(cmd)
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms key01 126\r\n"),
+			data:   []byte(strings.Repeat("A", 126) + "\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte(strings.Repeat("A", 126) + "B\r\n"),
+		},
+	}, entries)
+
+	assert.Equal(t, 128, cap(entries[0].data))
+	assert.Equal(t, 256, cap(entries[1].data))
 }
 
 func TestBuilder_AddMDel(t *testing.T) {
@@ -224,8 +386,14 @@ func TestBuilder_With_Max_Count(t *testing.T) {
 		assert.Same(t, cmd, b.getCommandList())
 
 		assert.Equal(t, 2, cmd.cmdCount)
-		assert.Equal(t, "mg key01 v\r\nms key02 7\r\ndata 01\r\n", string(cmd.requestData))
+		assert.Equal(t, "mg key01 v\r\nms key02 7\r\n", string(cmd.requestData))
 		assert.Equal(t, 1, cap(cmd.responseBinaries))
+		assert.Equal(t, []requestBinaryEntry{
+			{
+				offset: len("mg key01 v\r\nms key02 7\r\n"),
+				data:   []byte("data 01\r\n"),
+			},
+		}, traverseRequestBinaries(cmd))
 
 		cmd = cmd.sibling
 		assert.Equal(t, 2, cmd.cmdCount)

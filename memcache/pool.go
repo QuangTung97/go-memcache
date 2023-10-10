@@ -7,18 +7,18 @@ import (
 )
 
 const (
-	poolGetDataBaseSizeLog = 6
-	poolGetDataBaseSize    = 1 << poolGetDataBaseSizeLog
-	poolNumLevels          = 12
-	poolMaxBytes           = poolGetDataBaseSize * (1 << (poolNumLevels - 1))
+	poolBytesBaseSizeLog = 6
+	poolBytesBaseSize    = 1 << poolBytesBaseSizeLog
+	poolBytesNumLevels   = 15
+	poolMaxBytes         = poolBytesBaseSize * (1 << (poolBytesNumLevels - 1))
 )
 
 func initGetDataPools() []sync.Pool {
-	result := make([]sync.Pool, poolNumLevels)
+	result := make([]sync.Pool, poolBytesNumLevels)
 	for i := range result {
 		level := i
 		result[i].New = func() any {
-			data := make([]byte, 1<<(poolGetDataBaseSizeLog+level))
+			data := make([]byte, 1<<(poolBytesBaseSizeLog+level))
 			return &data[0]
 		}
 	}
@@ -36,19 +36,23 @@ func getByteSlice(size uint64) []byte {
 	}
 
 	numBits := bits.Len32(uint32(size - 1))
-	level := numBits - poolGetDataBaseSizeLog
-	if numBits < poolGetDataBaseSizeLog {
+	level := numBits - poolBytesBaseSizeLog
+	if numBits < poolBytesBaseSizeLog {
 		level = 0
 	}
 
 	dataPtr := getDataPools[level].Get().(*byte)
-	data := unsafe.Slice(dataPtr, 1<<(level+poolGetDataBaseSizeLog))
+	data := unsafe.Slice(dataPtr, 1<<(level+poolBytesBaseSizeLog))
 
 	return data[:size]
 }
 
 // ReleaseGetResponseData store response data for reuse
 func ReleaseGetResponseData(data []byte) {
+	releaseByteSlice(data)
+}
+
+func releaseByteSlice(data []byte) {
 	capacity := cap(data)
 	if capacity == 0 {
 		return
@@ -61,10 +65,10 @@ func ReleaseGetResponseData(data []byte) {
 	if capacity != (1 << numBits) {
 		return
 	}
-	if numBits < poolGetDataBaseSizeLog {
+	if numBits < poolBytesBaseSizeLog {
 		return
 	}
-	level := numBits - poolGetDataBaseSizeLog
+	level := numBits - poolBytesBaseSizeLog
 
 	data = data[:1]
 	getDataPools[level].Put(&data[0])
