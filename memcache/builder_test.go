@@ -246,6 +246,36 @@ func TestBuilder_AddMSet__Check_Request_Binary_Capacity(t *testing.T) {
 	assert.Equal(t, 256, cap(entries[1].data))
 }
 
+func TestBuilder_AddMSet__Check_Request_Binary_Capacity__At_Boundary(t *testing.T) {
+	b := newCmdBuilderWithMax(2)
+
+	data := []byte(strings.Repeat("A", 126))
+	b.addMSet("key01", data, MSetOptions{})
+
+	data = append(data, 'B')
+	b.addMSet("key02", data, MSetOptions{})
+
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms key01 126\r\nms key02 127\r\n", string(cmd.requestData))
+
+	entries := traverseRequestBinaries(cmd)
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms key01 126\r\n"),
+			data:   []byte(strings.Repeat("A", 126) + "\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte(strings.Repeat("A", 126) + "B\r\n"),
+		},
+	}, entries)
+
+	assert.Equal(t, 128, cap(entries[0].data))
+	assert.Equal(t, 256, cap(entries[1].data))
+}
+
 func TestBuilder_AddMDel(t *testing.T) {
 	b := newCmdBuilder()
 	b.addMDel("some:key", MDelOptions{})
