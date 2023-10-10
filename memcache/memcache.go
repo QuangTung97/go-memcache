@@ -8,7 +8,9 @@ import (
 // Client ...
 type Client struct {
 	conns []*clientConn
-	next  uint64
+	next  atomic.Uint64
+
+	health *healthCheckService
 }
 
 // New ...
@@ -25,14 +27,22 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 		conns = append(conns, c)
 	}
 
-	return &Client{
+	client := &Client{
 		conns: conns,
-		next:  0,
-	}, nil
+	}
+
+	opts := computeOptions(options...)
+
+	client.health = newHealthCheckService(conns, client.next.Load, opts.healthCheckDuration)
+	client.health.runInBackground()
+
+	return client, nil
 }
 
 // Close shut down Client
 func (c *Client) Close() error {
+	c.health.shutdown()
+
 	for _, conn := range c.conns {
 		conn.shutdown()
 	}
@@ -43,6 +53,6 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) getNextConn() *clientConn {
-	next := atomic.AddUint64(&c.next, 1)
+	next := c.next.Add(1)
 	return c.conns[next%uint64(len(c.conns))]
 }

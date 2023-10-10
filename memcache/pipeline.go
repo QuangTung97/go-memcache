@@ -61,13 +61,16 @@ func (p *Pipeline) newPipelineCmd(cmdType commandType) *pipelineCmd {
 	return cmd
 }
 
-// Pipeline creates a pipeline
-func (c *Client) Pipeline() *Pipeline {
-	p := &Pipeline{
-		c:              c.getNextConn(),
+func newPipeline(conn *clientConn) *Pipeline {
+	return &Pipeline{
+		c:              conn,
 		currentSession: nil,
 	}
-	return p
+}
+
+// Pipeline creates a pipeline
+func (c *Client) Pipeline() *Pipeline {
+	return newPipeline(c.getNextConn())
 }
 
 func (s *pipelineSession) parseCommands(cmdList *commandData) {

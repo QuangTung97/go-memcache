@@ -15,6 +15,8 @@ type memcacheOptions struct {
 
 	maxCommandsPerBatch int
 
+	healthCheckDuration time.Duration
+
 	dialErrorLogger func(err error)
 
 	connOptions []netconn.Option
@@ -34,6 +36,8 @@ func computeOptions(options ...Option) *memcacheOptions {
 		writeLimit:    500,
 
 		maxCommandsPerBatch: 100,
+
+		healthCheckDuration: 3 * time.Second,
 
 		dialErrorLogger: func(err error) {
 			log.Println("[ERROR] Memcache dial error:", err)
@@ -100,5 +104,13 @@ func WithWriteLimit(limit int) Option {
 func WithMaxCommandsPerBatch(maxCommands int) Option {
 	return func(opts *memcacheOptions) {
 		opts.maxCommandsPerBatch = maxCommands
+	}
+}
+
+// WithHealthCheckDuration specifies duration in which health check will be called after connections have no activity
+// default is 3 seconds
+func WithHealthCheckDuration(duration time.Duration) Option {
+	return func(opts *memcacheOptions) {
+		opts.healthCheckDuration = duration
 	}
 }

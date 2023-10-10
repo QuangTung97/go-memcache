@@ -20,10 +20,12 @@ type clientConn struct {
 	closeChan chan struct{}
 }
 
-func sleepWithCloseChan(d time.Duration, closeChan <-chan struct{}) {
+func sleepWithCloseChan(d time.Duration, closeChan <-chan struct{}) (closed bool) {
 	select {
-	case <-closeChan:
+	case _, ok := <-closeChan:
+		return !ok
 	case <-time.After(d):
+		return false
 	}
 }
 
