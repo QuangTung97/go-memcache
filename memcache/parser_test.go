@@ -1,8 +1,9 @@
 package memcache
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func newParserStr(s string, binaries ...string) *parser {
@@ -437,6 +438,91 @@ func TestParser_Server_Error_MDel(t *testing.T) {
 	resp, err := p.readMDel()
 	assert.Equal(t, ErrServerError{Message: "some error"}, err)
 	assert.Equal(t, MDelResponse{}, resp)
+}
+
+func TestParser_Version(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		p := newParserStr(
+			"VERSION 1.6.18\r\nHD\r\nVA 3 c88\r\n",
+			"ABC",
+		)
+
+		resp, err := p.readVersion()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, VersionResponse{
+			Version: "1.6.18",
+		}, resp)
+
+		setResp, err := p.readMSet()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, MSetResponse{
+			Type: MSetResponseTypeHD,
+		}, setResp)
+
+		getResp, err := p.readMGet()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, MGetResponse{
+			Type: MGetResponseTypeVA,
+			Data: []byte("ABC"),
+			CAS:  88,
+		}, getResp)
+	})
+
+	t.Run("missing version", func(t *testing.T) {
+		p := newParserStr("VERSIO")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, ErrInvalidResponse, err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		p := newParserStr("SERVER_ERROR some error\r\n")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, NewServerError("some error"), err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
+
+	t.Run("invalid version string", func(t *testing.T) {
+		p := newParserStr("VERSIOX\r\n")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, ErrInvalidResponse, err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
+
+	t.Run("invalid version string", func(t *testing.T) {
+		p := newParserStr("VERSIOX\r\n")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, ErrInvalidResponse, err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
+
+	t.Run("without version value", func(t *testing.T) {
+		p := newParserStr("VERSION\r\n")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
+
+	t.Run("without crlf", func(t *testing.T) {
+		p := newParserStr("VERSION\r")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, ErrInvalidResponse, err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
+
+	t.Run("invalid response type", func(t *testing.T) {
+		p := newParserStr("EN VA 00\r\nVERSION 123")
+
+		resp, err := p.readVersion()
+		assert.Equal(t, ErrInvalidResponse, err)
+		assert.Equal(t, VersionResponse{}, resp)
+	})
 }
 
 func TestParser_FlushAll(t *testing.T) {

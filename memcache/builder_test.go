@@ -330,6 +330,25 @@ func TestBuilder_AddMDel_With_Only_TTL(t *testing.T) {
 	assert.Equal(t, "md some:key\r\n", string(cmd.requestData))
 }
 
+func TestBuilder_AddVersion(t *testing.T) {
+	b := newCmdBuilder()
+	b.addVersion()
+	cmd := b.finish()
+
+	assert.Equal(t, 1, cmd.cmdCount)
+	assert.Equal(t, "version\r\n", string(cmd.requestData))
+}
+
+func TestBuilder_AddVersion_Multi_Times(t *testing.T) {
+	b := newCmdBuilder()
+	b.addVersion()
+	b.addVersion()
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "version\r\nversion\r\n", string(cmd.requestData))
+}
+
 func TestBuilder_AddFlushAll(t *testing.T) {
 	b := newCmdBuilder()
 	b.addFlushAll()

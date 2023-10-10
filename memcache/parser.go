@@ -1,6 +1,9 @@
 package memcache
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+)
 
 type parser struct {
 	data     []byte
@@ -97,6 +100,11 @@ var ErrInvalidMDel = ErrBrokenPipe{reason: "can not parse mdel response"}
 
 // ErrInvalidResponse ...
 var ErrInvalidResponse = ErrBrokenPipe{reason: "can not parse response"}
+
+// VersionResponse ...
+type VersionResponse struct {
+	Version string
+}
 
 func (p *parser) findCRLF(index int) int {
 	for i := index + 1; i < len(p.data); i++ {
@@ -367,6 +375,42 @@ func (p *parser) readMDel() (MDelResponse, error) {
 	}
 
 	return MDelResponse{}, ErrInvalidMDel
+}
+
+var versionString = []byte("VERSION")
+
+// version command
+func (p *parser) readVersion() (VersionResponse, error) {
+	if len(p.data) < len(versionString) {
+		return VersionResponse{}, ErrInvalidResponse
+	}
+
+	if p.prefixEqual('V', 'E') {
+		if !bytes.Equal(p.data[:len(versionString)], versionString) {
+			return VersionResponse{}, ErrInvalidResponse
+		}
+
+		start := len(versionString)
+		index := p.findCRLF(start)
+		if index < 0 {
+			return VersionResponse{}, ErrInvalidResponse
+		}
+
+		version := string(p.data[start : index-2])
+		version = strings.TrimSpace(version)
+
+		p.skipData(index)
+
+		return VersionResponse{
+			Version: version,
+		}, nil
+	}
+
+	if errType := p.isErrorPrefix(); errType != errorTypeNone {
+		return VersionResponse{}, p.readError(errType)
+	}
+
+	return VersionResponse{}, ErrInvalidResponse
 }
 
 // flush_all

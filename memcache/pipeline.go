@@ -111,6 +111,10 @@ func parseCommandsForSingleCommandData(
 		case commandTypeFlushAll:
 			cmd.err = ps.readFlushAll()
 
+		case commandTypeVersion:
+			resp, err := ps.readVersion()
+			cmd.resp, cmd.err = unsafe.Pointer(&resp), err
+
 		default:
 			panic("invalid cmd type")
 		}
@@ -327,6 +331,27 @@ func (p *Pipeline) MDel(key string, opts MDelOptions) func() (MDelResponse, erro
 		resp := (*MDelResponse)(cmd.resp)
 		if resp == nil {
 			return MDelResponse{}, cmd.err
+		}
+		return *resp, cmd.err
+	}
+}
+
+// Version ...
+func (p *Pipeline) Version() func() (VersionResponse, error) {
+	cmdRef := p.addCommand(commandTypeVersion)
+	cmdRef.sess.builder.addVersion()
+
+	return func() (VersionResponse, error) {
+		err := cmdRef.pushAndWaitIfNotRead()
+		if err != nil {
+			return VersionResponse{}, err
+		}
+
+		cmd := cmdRef.getCmd()
+
+		resp := (*VersionResponse)(cmd.resp)
+		if resp == nil {
+			return VersionResponse{}, cmd.err
 		}
 		return *resp, cmd.err
 	}
