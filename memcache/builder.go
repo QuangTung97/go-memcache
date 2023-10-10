@@ -118,6 +118,7 @@ func (b *cmdBuilder) addMSet(key string, data []byte, opts MSetOptions) {
 
 	dataLen := uint64(len(data))
 	binaryData := getByteSlice(dataLen + 2)
+
 	copy(binaryData, data)
 	copy(binaryData[dataLen:], "\r\n")
 

@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,6 +177,73 @@ func TestBuilder_AddMSet_Multi(t *testing.T) {
 			data:   []byte("VALUE02\r\n"),
 		},
 	}, traverseRequestBinaries(cmd))
+}
+
+func TestBuilder_AddMSet_Multi__Exceed_Max_Count(t *testing.T) {
+	b := newCmdBuilderWithMax(2)
+	b.addMSet("some:key", []byte("SOME-VALUE"), MSetOptions{
+		TTL: 23,
+	})
+	b.addMSet("key02", []byte("VALUE02"), MSetOptions{
+		CAS: 88,
+	})
+	b.addMSet("key03", []byte("VALUE03"), MSetOptions{})
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms some:key 10 T23\r\nms key02 7 C88\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms some:key 10 T23\r\n"),
+			data:   []byte("SOME-VALUE\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("VALUE02\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
+
+	cmd = cmd.sibling
+	assert.Equal(t, 1, cmd.cmdCount)
+	assert.Equal(t, "ms key03 7\r\n", string(cmd.requestData))
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len(cmd.requestData),
+			data:   []byte("VALUE03\r\n"),
+		},
+	}, traverseRequestBinaries(cmd))
+
+	assert.Nil(t, cmd.sibling)
+}
+
+func TestBuilder_AddMSet__Check_Request_Binary_Capacity(t *testing.T) {
+	b := newCmdBuilderWithMax(2)
+
+	data := []byte(strings.Repeat("A", 125))
+	b.addMSet("key01", data, MSetOptions{})
+
+	data = append(data, 'B', 'C')
+	b.addMSet("key02", data, MSetOptions{})
+
+	cmd := b.finish()
+
+	assert.Equal(t, 2, cmd.cmdCount)
+	assert.Equal(t, "ms key01 125\r\nms key02 127\r\n", string(cmd.requestData))
+
+	entries := traverseRequestBinaries(cmd)
+	assert.Equal(t, []requestBinaryEntry{
+		{
+			offset: len("ms key01 126\r\n"),
+			data:   []byte(strings.Repeat("A", 125) + "\r\n"),
+		},
+		{
+			offset: len(cmd.requestData),
+			data:   []byte(strings.Repeat("A", 125) + "BC\r\n"),
+		},
+	}, entries)
+
+	assert.Equal(t, 128, cap(entries[0].data))
+	assert.Equal(t, 256, cap(entries[1].data))
 }
 
 func TestBuilder_AddMDel(t *testing.T) {

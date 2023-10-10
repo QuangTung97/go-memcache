@@ -1,6 +1,7 @@
 package memcache
 
 import (
+	"io"
 	"sync"
 )
 
@@ -54,8 +55,8 @@ type commandData struct {
 	requestData  []byte
 	responseData []byte
 
-	requestBinaries  *requestBinaryEntry
-	responseBinaries [][]byte // mget binary responses
+	requestBinaries  *requestBinaryEntry // linked list of binary entries
+	responseBinaries [][]byte            // mget binary responses
 
 	conn *senderConnection
 
@@ -64,7 +65,7 @@ type commandData struct {
 }
 
 type requestBinaryEntry struct {
-	next   *requestBinaryEntry // a linked list of binary entries
+	next   *requestBinaryEntry // to form a linked list of binary entries
 	offset int
 	data   []byte
 }
@@ -82,6 +83,27 @@ func newCommand() *commandData {
 	return c
 }
 
+func (c *commandData) writeToWriter(w io.Writer) error {
+	index := 0
+	for current := c.requestBinaries; current != nil; current = current.next {
+		if _, err := w.Write(c.requestData[index:current.offset]); err != nil {
+			return err
+		}
+		if _, err := w.Write(current.data); err != nil {
+			return err
+		}
+		index = current.offset
+	}
+
+	if index < len(c.requestData) {
+		if _, err := w.Write(c.requestData[index:]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func freeCommandResponseData(cmd *commandData) {
 	responseBytesPool.put(cmd.responseData)
 	cmd.responseData = nil
@@ -94,6 +116,11 @@ func freeCommandResponseData(cmd *commandData) {
 func freeCommandRequestData(cmd *commandData) {
 	requestBytesPool.put(cmd.requestData)
 	cmd.requestData = nil
+
+	for current := cmd.requestBinaries; current != nil; current = current.next {
+		releaseByteSlice(current.data)
+	}
+	cmd.requestBinaries = nil
 }
 
 func (c *commandData) waitCompleted() {

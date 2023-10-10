@@ -226,8 +226,7 @@ func (s *sender) writeAndFlush() {
 	}
 
 	for _, cmd := range s.tmpBuf {
-		_, err := s.conn.writer.Write(cmd.requestData)
-		if err != nil {
+		if err := cmd.writeToWriter(s.conn.writer); err != nil {
 			_ = s.conn.setLastErrorAndCloseUnsafe(err)
 			return
 		}
