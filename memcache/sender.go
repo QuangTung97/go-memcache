@@ -128,13 +128,13 @@ func initRecvBuffer(b *recvBuffer, sizeLog int) {
 }
 
 func (b *recvBuffer) push(cmdList []*commandData) (remaining []*commandData, isClosed bool) {
-	max := uint64(len(b.buf))
+	maxPos := uint64(len(b.buf))
 
 	for len(cmdList) > 0 {
 		b.mut.Lock()
 
 		// Wait until: begin + max - end > 0
-		for !b.closed && b.begin+max <= b.end {
+		for !b.closed && b.begin+maxPos <= b.end {
 			b.sendCond.Wait()
 		}
 
@@ -144,8 +144,8 @@ func (b *recvBuffer) push(cmdList []*commandData) (remaining []*commandData, isC
 		}
 
 		n := uint64(len(cmdList))
-		if b.begin+max < b.end+n {
-			n = b.begin + max - b.end
+		if b.begin+maxPos < b.end+n {
+			n = b.begin + maxPos - b.end
 		}
 
 		for i, cmd := range cmdList[:n] {
