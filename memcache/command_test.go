@@ -2,6 +2,7 @@ package memcache
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -123,4 +124,59 @@ func TestWriteToWriter(t *testing.T) {
 				"mg key03 v\r\n",
 			buf.String())
 	})
+
+	t.Run("with writer error", func(t *testing.T) {
+		cmd := newCommand()
+		cmd.requestData = []byte("ms key01 8\r\n")
+
+		writeErr := errors.New("some error")
+		w := &errorWriter{err: writeErr}
+
+		err := cmd.writeToWriter(w)
+		assert.Equal(t, writeErr, err)
+	})
+
+	t.Run("with writer error with binary", func(t *testing.T) {
+		cmd := newCommand()
+		cmd.requestData = []byte("ms key01 8\r\n")
+		cmd.requestBinaries = &requestBinaryEntry{
+			offset: len(cmd.requestData),
+			data:   []byte("data 01"),
+		}
+
+		writeErr := errors.New("some error")
+		w := &errorWriter{err: writeErr}
+
+		err := cmd.writeToWriter(w)
+		assert.Equal(t, writeErr, err)
+	})
+
+	t.Run("write error with binary, fail when writing binary", func(t *testing.T) {
+		cmd := newCommand()
+		cmd.requestData = []byte("ms key01 8\r\n")
+		cmd.requestBinaries = &requestBinaryEntry{
+			offset: len(cmd.requestData),
+			data:   []byte("data 01"),
+		}
+
+		writeErr := errors.New("some error")
+		w := &errorWriter{err: writeErr, failAfter: 1}
+
+		err := cmd.writeToWriter(w)
+		assert.Equal(t, writeErr, err)
+	})
+}
+
+type errorWriter struct {
+	writeTimes int
+	failAfter  int
+	err        error
+}
+
+func (w *errorWriter) Write(data []byte) (int, error) {
+	w.writeTimes++
+	if w.writeTimes > w.failAfter {
+		return 0, w.err
+	}
+	return len(data), nil
 }
