@@ -246,7 +246,9 @@ func (c commandRef) pushAndWaitIfNotRead() error {
 	return nil
 }
 
-// MGet ...
+// MGet using the *mg* meta command of memcached
+// The field MGetResponse.Data SHOULD be released after use using function ReleaseGetResponseData
+// for reuse memory spaces
 func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, error) {
 	result, err := p.MGetFast(key, opts)
 	if err != nil {
@@ -258,6 +260,7 @@ func (p *Pipeline) MGet(key string, opts MGetOptions) func() (MGetResponse, erro
 }
 
 // MGetFast is similar to MGet, but without one more alloc
+// The MGetResult returned SHOULD be released after use using ReleaseMGetResult
 func (p *Pipeline) MGetFast(key string, opts MGetOptions) (MGetResult, error) {
 	if err := validateKeyFormat(key); err != nil {
 		return MGetResult{}, err
@@ -276,7 +279,9 @@ type MGetResult struct {
 	ref commandRef
 }
 
-// Result returns mget response
+// Result returns meta get response
+// The field MGetResponse.Data SHOULD be released after use using function ReleaseGetResponseData
+// for reuse memory space
 func (r MGetResult) Result() (MGetResponse, error) {
 	err := r.ref.pushAndWaitIfNotRead()
 	if err != nil {
