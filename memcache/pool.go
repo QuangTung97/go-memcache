@@ -137,8 +137,8 @@ func (p *pipelineCommandListPool) putCommandList(cmdList []*pipelineCmd) {
 // Response Binary Pool
 // ======================================
 const (
-	poolResponseBinaryBaseSizeLog = 4
-	poolResponseBinaryLevels      = 6
+	poolResponseBinaryBaseSizeLog = 2
+	poolResponseBinaryLevels      = 8
 	poolResponseBinaryMaxSize     = 1 << (poolResponseBinaryBaseSizeLog + poolResponseBinaryLevels - 1)
 )
 

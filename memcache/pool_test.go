@@ -230,13 +230,13 @@ func TestResponseBinaryPool(t *testing.T) {
 	t.Run("one", func(t *testing.T) {
 		data := getResponseBinaries(1)
 		assert.Equal(t, 0, len(data))
-		assert.Equal(t, 16, cap(data))
+		assert.Equal(t, 4, cap(data))
 	})
 
-	t.Run("smaller than 16", func(t *testing.T) {
-		data := getResponseBinaries(15)
+	t.Run("smaller than 4", func(t *testing.T) {
+		data := getResponseBinaries(3)
 		assert.Equal(t, 0, len(data))
-		assert.Equal(t, 16, cap(data))
+		assert.Equal(t, 4, cap(data))
 	})
 
 	t.Run("bigger than max", func(t *testing.T) {
@@ -295,10 +295,10 @@ func TestResponseBinaryPool(t *testing.T) {
 	})
 
 	t.Run("put with cap smaller than 16", func(t *testing.T) {
-		putResponseBinaries(make([][]byte, 0, 8))
+		putResponseBinaries(make([][]byte, 0, 2))
 
-		x := getResponseBinaries(7)
+		x := getResponseBinaries(3)
 		assert.Equal(t, 0, len(x))
-		assert.Equal(t, 16, cap(x))
+		assert.Equal(t, 4, cap(x))
 	})
 }
