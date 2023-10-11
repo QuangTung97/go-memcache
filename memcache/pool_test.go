@@ -294,7 +294,7 @@ func TestResponseBinaryPool(t *testing.T) {
 		assert.Equal(t, 32, cap(x))
 	})
 
-	t.Run("put with cap smaller than 16", func(t *testing.T) {
+	t.Run("put with cap smaller than 4", func(t *testing.T) {
 		putResponseBinaries(make([][]byte, 0, 2))
 
 		x := getResponseBinaries(3)
