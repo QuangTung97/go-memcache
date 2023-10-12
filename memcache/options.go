@@ -37,7 +37,7 @@ func computeOptions(options ...Option) *memcacheOptions {
 
 		maxCommandsPerBatch: 100,
 
-		healthCheckDuration: 3 * time.Second,
+		healthCheckDuration: 15 * time.Second,
 
 		dialErrorLogger: func(err error) {
 			log.Println("[ERROR] Memcache dial error:", err)
@@ -108,7 +108,7 @@ func WithMaxCommandsPerBatch(maxCommands int) Option {
 }
 
 // WithHealthCheckDuration specifies duration in which health check will be called after connections have no activity
-// default is 3 seconds
+// default is 15 seconds
 func WithHealthCheckDuration(duration time.Duration) Option {
 	return func(opts *memcacheOptions) {
 		opts.healthCheckDuration = duration

@@ -2,6 +2,7 @@ package memcache
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"unsafe"
@@ -127,6 +128,39 @@ func BenchmarkPipelineCmd_New(b *testing.B) {
 	}
 }
 
+type commandPointerStruct struct {
+	ptr     unsafe.Pointer
+	padding [7]uint64
+}
+
+var globalCmdPointers [8]commandPointerStruct
+
+func BenchmarkPipelineCmd_New__Parallel(b *testing.B) {
+	// result = 2798174 / 10_000 / 8 = 34.977175 ns / op
+
+	const numThreads = 8
+	const numLoops = 10_000
+
+	for n := 0; n < b.N; n++ {
+		var wg sync.WaitGroup
+		wg.Add(numThreads)
+
+		for i := 0; i < numThreads; i++ {
+			index := i
+			go func() {
+				defer wg.Done()
+
+				for k := 0; k < numLoops; k++ {
+					cmd := &pipelineCmd{}
+					atomic.StorePointer(&globalCmdPointers[index].ptr, unsafe.Pointer(cmd))
+				}
+			}()
+		}
+
+		wg.Wait()
+	}
+}
+
 func TestPipelineCmdPool(t *testing.T) {
 	cmd := getPipelineCmdFromPool()
 	cmd.cmdType = commandTypeMGet
@@ -141,6 +175,34 @@ func BenchmarkPipelineCmd_Pool(b *testing.B) {
 		cmd := getPipelineCmdFromPool()
 		atomic.StorePointer(&pipelineCmdPointer, unsafe.Pointer(cmd))
 		putPipelineCmdToPool(cmd)
+	}
+}
+
+func BenchmarkPipelineCmd_Pool__Parallel(b *testing.B) {
+	// result = 884668 / 10_000 / 8 = 11.05835 ns / op
+	// 2798174 / 884668 ~ 3x times
+
+	const numThreads = 8
+	const numLoops = 10_000
+
+	for n := 0; n < b.N; n++ {
+		var wg sync.WaitGroup
+		wg.Add(numThreads)
+
+		for i := 0; i < numThreads; i++ {
+			index := i
+			go func() {
+				defer wg.Done()
+
+				for k := 0; k < numLoops; k++ {
+					cmd := getPipelineCmdFromPool()
+					atomic.StorePointer(&globalCmdPointers[index].ptr, unsafe.Pointer(cmd))
+					putPipelineCmdToPool(cmd)
+				}
+			}()
+		}
+
+		wg.Wait()
 	}
 }
 
