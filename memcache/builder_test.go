@@ -7,6 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func (b *cmdBuilder) getCurrentCommandForTest() *commandData {
+	return b.cmd
+}
+
 func newCmdBuilder() *cmdBuilder {
 	var b cmdBuilder
 	initCmdBuilder(&b, 1000)
@@ -380,6 +384,24 @@ func TestBuilder_AddMGet_Then_Clear(t *testing.T) {
 	b.clearCmd()
 
 	assert.Nil(t, b.getCurrentCommandForTest())
+}
+
+func TestBuilder_AddMSet_Then_Clear(t *testing.T) {
+	b := newCmdBuilder()
+	b.addMSet("some:key", []byte("some data"), MSetOptions{})
+	cmd := b.finish()
+
+	assert.Equal(t, 1, cmd.cmdCount)
+	assert.Equal(t, "ms some:key 9\r\n", string(cmd.requestData))
+	assert.Equal(t, 1, len(traverseRequestBinaries(cmd)))
+	assert.Equal(t, 0, cap(cmd.responseBinaries))
+
+	b.clearCmd()
+
+	assert.Nil(t, b.getCurrentCommandForTest())
+	assert.Nil(t, b.cmdList)
+	assert.Nil(t, b.lastPointer)
+	assert.Nil(t, b.lastRequestEntry)
 }
 
 func newCmdBuilderWithMax(maxCount int) *cmdBuilder {

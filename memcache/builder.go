@@ -162,10 +162,6 @@ func (b *cmdBuilder) addFlushAll() {
 	b.cmd.requestData = append(b.cmd.requestData, "flush_all\r\n"...)
 }
 
-func (b *cmdBuilder) getCurrentCommandForTest() *commandData {
-	return b.cmd
-}
-
 func (b *cmdBuilder) getCommandList() *commandData {
 	return b.cmdList
 }
@@ -173,6 +169,8 @@ func (b *cmdBuilder) getCommandList() *commandData {
 func (b *cmdBuilder) clearCmd() {
 	b.cmd = nil
 	b.cmdList = nil
+	b.lastPointer = nil
+	b.lastRequestEntry = nil
 }
 
 func (b *cmdBuilder) internalResetMGetCount() {
