@@ -7,12 +7,15 @@
 
 A Simple Memcached Client Library.
 
-Similar to: https://github.com/bradfitz/gomemcache
+Similar to: https://github.com/bradfitz/gomemcache. \
+But faster (up to 2x in some benchmarks) and supporting pipelined DELETE & SET operations
 
-But mostly focused on the new meta commands:
-https://github.com/memcached/memcached/wiki/MetaCommands
+And mostly focused on the new meta commands:
+https://github.com/memcached/memcached/wiki/MetaCommands \
+To facilitate more complex caching algorithms (e.g. memcached lease).
 
-It implemented using Batching & Pipelining to reduce syscalls, to increase performance.
+It implemented using Batching & Pipelining to reduce syscalls,
+batching can happen between clients of the same connection.
 
 Please checkout this document for better understanding of request options and response values of this library:
 https://github.com/memcached/memcached/blob/master/doc/protocol.txt
@@ -71,4 +74,10 @@ pipeline.MSet("KEY01", []byte("key data 01"), memcache.MSetOptions{})
 pipeline.MSet("KEY02", []byte("key data 02"), memcache.MSetOptions{})
 ```
 
-without `pipeline.Finish()` the two set commands will **NOT** be delivered to the memcached server.
+without `pipeline.Finish()` the two set commands will **NOT** be delivered to the memcached server. \
+Because the returned functions should be called, ``pipeline.Finsh()`` will do the calling if one forgotten.
+
+```
+fn := pipeline.MSet("KEY01", []byte("key data 01"), memcache.MSetOptions{})
+_, _ = fn()
+```
