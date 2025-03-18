@@ -711,7 +711,7 @@ func TestPipeline_Version_Command(t *testing.T) {
 	resp, err := p.Version()()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, VersionResponse{
-		Version: "1.6.18",
+		Version: "1.6.37",
 	}, resp)
 }
 
@@ -723,7 +723,7 @@ func TestPipeline_Version_Command__Get_Multi_Times(t *testing.T) {
 	resp, err := fn()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, VersionResponse{
-		Version: "1.6.18",
+		Version: "1.6.37",
 	}, resp)
 
 	resp, err = fn()
@@ -747,7 +747,7 @@ func TestPipeline_Version_Command__Between_Others(t *testing.T) {
 	versionResp, err := fn2()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, VersionResponse{
-		Version: "1.6.18",
+		Version: "1.6.37",
 	}, versionResp)
 
 	getResp, err := fn3()
