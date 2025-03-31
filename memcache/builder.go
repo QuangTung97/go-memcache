@@ -1,9 +1,9 @@
 package memcache
 
 type cmdBuilder struct {
-	cmd         *commandData
-	cmdList     *commandData
-	lastPointer **commandData
+	cmd         *commandListData
+	cmdList     *commandListData
+	lastPointer **commandListData
 
 	lastRequestEntry **requestBinaryEntry
 
@@ -162,7 +162,7 @@ func (b *cmdBuilder) addFlushAll() {
 	b.cmd.requestData = append(b.cmd.requestData, "flush_all\r\n"...)
 }
 
-func (b *cmdBuilder) getCommandList() *commandData {
+func (b *cmdBuilder) getCommandList() *commandListData {
 	return b.cmdList
 }
 
@@ -178,7 +178,7 @@ func (b *cmdBuilder) internalResetMGetCount() {
 	b.mgetCount = 0
 }
 
-func (b *cmdBuilder) finish() *commandData {
+func (b *cmdBuilder) finish() *commandListData {
 	b.internalResetMGetCount()
 	return b.cmdList
 }

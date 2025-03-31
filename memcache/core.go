@@ -7,6 +7,7 @@ import (
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
+// coreConnection is the core data structure
 type coreConnection struct {
 	responseReader *responseReader
 	sender         *sender
@@ -39,7 +40,7 @@ func (c *coreConnection) waitReceiverShutdown() {
 	c.wg.Wait()
 }
 
-func (c *coreConnection) publish(cmd *commandData) {
+func (c *coreConnection) publish(cmd *commandListData) {
 	c.sender.publish(cmd)
 }
 
@@ -95,7 +96,7 @@ type increaseReadCount struct {
 	increased bool
 }
 
-func (i *increaseReadCount) apply(c *coreConnection, current *commandData) {
+func (i *increaseReadCount) apply(c *coreConnection, current *commandListData) {
 	if i.increased {
 		return
 	}
@@ -103,7 +104,7 @@ func (i *increaseReadCount) apply(c *coreConnection, current *commandData) {
 	c.sender.selector.addReadCount(uint64(current.cmdCount))
 }
 
-func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData, inc *increaseReadCount) error {
+func (c *coreConnection) readNextMemcacheCommandResponse(current *commandListData, inc *increaseReadCount) error {
 	for {
 		// Read from response reader
 		ok := c.responseReader.readNextData()
@@ -132,7 +133,7 @@ func (c *coreConnection) readNextMemcacheCommandResponse(current *commandData, i
 type cmdListReader struct {
 	sender *sender
 
-	cmdList []*commandData
+	cmdList []*commandListData
 	length  int
 	offset  int
 }
@@ -140,7 +141,7 @@ type cmdListReader struct {
 func newCmdListReader(sender *sender) *cmdListReader {
 	return &cmdListReader{
 		sender:  sender,
-		cmdList: make([]*commandData, 128),
+		cmdList: make([]*commandListData, 128),
 		length:  0,
 		offset:  0,
 	}
@@ -154,7 +155,7 @@ func (c *cmdListReader) readIfExhausted() int {
 	return c.length
 }
 
-func (c *cmdListReader) current() *commandData {
+func (c *cmdListReader) current() *commandListData {
 	return c.cmdList[c.offset]
 }
 

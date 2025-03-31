@@ -21,7 +21,7 @@ const (
 )
 
 type responseReader struct {
-	currentCmd *commandData
+	currentCmd *commandListData
 
 	state   readerState
 	tmpData []byte
@@ -272,7 +272,7 @@ func (r *responseReader) recv(data []byte) {
 	}
 }
 
-func (r *responseReader) setCurrentCommand(cmd *commandData) {
+func (r *responseReader) setCurrentCommand(cmd *commandListData) {
 	r.currentCmd = cmd
 }
 

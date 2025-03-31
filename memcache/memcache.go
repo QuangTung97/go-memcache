@@ -5,15 +5,16 @@ import (
 	"sync/atomic"
 )
 
-// Client ...
+// Client represents a pool of TCP connections to a memcached server
 type Client struct {
-	conns []*clientConn
-	next  atomic.Uint64
+	conns []*clientConn // pool of TCP connections
+	next  atomic.Uint64 // increase by one for each time a new **Pipeline** is created
 
 	health *healthCheckService
 }
 
-// New ...
+// New creates a Client that contains a pool of TCP connections.
+// Number of TCP connections specified by **numConns** param.
 func New(addr string, numConns int, options ...Option) (*Client, error) {
 	if numConns <= 0 {
 		return nil, errors.New("numConns must > 0")
@@ -44,7 +45,8 @@ func New(addr string, numConns int, options ...Option) (*Client, error) {
 	return client, nil
 }
 
-// Close shut down Client
+// Close shuts down Client.
+// It waits for all the background goroutines to finish before returning
 func (c *Client) Close() error {
 	c.health.shutdown()
 

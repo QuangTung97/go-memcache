@@ -15,12 +15,14 @@ type pipelineSession struct {
 
 	builder cmdBuilder
 
-	published     bool
+	published     bool // commands had already been pushed to sendBuffer
 	alreadyWaited bool
 
 	currentCmdList []*pipelineCmd
 }
 
+// pipelineCmd for representing each command in a pipelineSession.
+// For example, calling MGet() will create a associated pipelineCmd.
 type pipelineCmd struct {
 	cmdType commandType
 
@@ -32,12 +34,14 @@ type pipelineCmd struct {
 	isRead bool
 }
 
-// Pipeline should NOT be used concurrently
+// Pipeline is a container of commands to reduce network round trips,
+// reduce number of sys-calls & improve performance.
+// It can NOT be used concurrently in multiple goroutines.
 type Pipeline struct {
 	client *Client
 	conn   *clientConn
 
-	currentSession *pipelineSession
+	currentSession *pipelineSession // one Pipeline could have multiple pipelineSession
 }
 
 func (p *Pipeline) newPipelineSession() *pipelineSession {
@@ -80,7 +84,7 @@ func (c *Client) Pipeline() *Pipeline {
 	return newPipeline(nil, c)
 }
 
-func (s *pipelineSession) parseCommands(cmdList *commandData) {
+func (s *pipelineSession) parseCommands(cmdList *commandListData) {
 	pipeCmds := s.currentCmdList
 	for current := cmdList; current != nil; current = current.sibling {
 		n := current.cmdCount
@@ -91,7 +95,7 @@ func (s *pipelineSession) parseCommands(cmdList *commandData) {
 
 func parseCommandsForSingleCommandData(
 	pipelineCommands []*pipelineCmd,
-	currentCmd *commandData,
+	currentCmd *commandListData,
 ) {
 	var ps parser
 	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
@@ -138,7 +142,7 @@ func parseCommandsForSingleCommandData(
 	}
 }
 
-func commandListWaitCompleted(cmdList *commandData) {
+func commandListWaitCompleted(cmdList *commandListData) {
 	for current := cmdList; current != nil; current = current.sibling {
 		current.waitCompleted()
 	}
@@ -183,7 +187,7 @@ func (p *Pipeline) getCurrentSession() *pipelineSession {
 	return p.currentSession
 }
 
-func (s *pipelineSession) pushCommands(cmd *commandData) {
+func (s *pipelineSession) pushCommands(cmd *commandListData) {
 	pipe := s.pipeline
 	pipe.conn.pushCommand(cmd)
 }

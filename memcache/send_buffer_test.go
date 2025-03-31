@@ -88,7 +88,7 @@ func TestSendBuffer(t *testing.T) {
 		var popped atomic.Bool
 		closeCh := make(chan struct{})
 
-		var cmdList *commandData
+		var cmdList *commandListData
 		var popClosed bool
 
 		go func() {
@@ -125,7 +125,7 @@ func TestSendBuffer(t *testing.T) {
 		var popped atomic.Bool
 		closeCh := make(chan struct{})
 
-		var cmdList *commandData
+		var cmdList *commandListData
 		var popClosed bool
 
 		go func() {

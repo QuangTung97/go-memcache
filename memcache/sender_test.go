@@ -17,7 +17,7 @@ import (
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
-func newCommandFromString(s string) *commandData {
+func newCommandFromString(s string) *commandListData {
 	cmd := newCommand()
 	cmd.cmdCount = 1
 	cmd.requestData = []byte(s)
@@ -48,7 +48,7 @@ func TestSender_Publish(t *testing.T) {
 
 	assert.Equal(t, "mg key01 v\r\nmg key02 v k\r\n", buf.String())
 
-	cmdList := make([]*commandData, 10)
+	cmdList := make([]*commandListData, 10)
 	n := s.readSentCommands(cmdList)
 	assert.Equal(t, 2, n)
 	assert.Equal(t, "", string(cmdList[0].responseData))
@@ -85,7 +85,7 @@ func TestSender_Publish_Concurrent(t *testing.T) {
 
 	closeAndWaitSendJob(s)
 
-	cmdList := make([]*commandData, 10)
+	cmdList := make([]*commandListData, 10)
 	n := s.readSentCommands(cmdList)
 	assert.Equal(t, 3, n)
 
@@ -148,7 +148,7 @@ func TestSender_Publish_Stress_Test(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		cmdList := make([]*commandData, 29)
+		cmdList := make([]*commandListData, 29)
 		total := 0
 		for total < 2*numRounds {
 			n := s.readSentCommands(cmdList)
@@ -222,7 +222,7 @@ func TestSender_Publish_Stress_Test__With_Write_Limit(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		cmdList := make([]*commandData, 29)
+		cmdList := make([]*commandListData, 29)
 		total := 0
 		for total < 2*numRounds {
 			n := s.readSentCommands(cmdList)
@@ -379,7 +379,7 @@ func TestSender_Publish_Write_Error_Then_ResetConn(t *testing.T) {
 
 	closeAndWaitSendJob(s)
 
-	cmdList := make([]*commandData, 10)
+	cmdList := make([]*commandListData, 10)
 	n := s.readSentCommands(cmdList)
 
 	assert.Equal(t, 2, n)
@@ -419,7 +419,7 @@ func TestRecvBuffer__Push_And_Then_Read__Command_List_Should_Be_Nil(t *testing.T
 	var b recvBuffer
 	initRecvBuffer(&b, 2)
 
-	remaining, closed := b.push([]*commandData{
+	remaining, closed := b.push([]*commandListData{
 		newCommandFromString("mg key01 v\r\n"),
 		newCommandFromString("mg key02 v\r\n"),
 		newCommandFromString("mg key02 v\r\n"),
@@ -427,7 +427,7 @@ func TestRecvBuffer__Push_And_Then_Read__Command_List_Should_Be_Nil(t *testing.T
 	assert.Equal(t, false, closed)
 	assert.Equal(t, 0, len(remaining))
 
-	cmdList := make([]*commandData, 1024)
+	cmdList := make([]*commandListData, 1024)
 	size := b.read(cmdList)
 	assert.Equal(t, 3, size)
 
@@ -437,7 +437,7 @@ func TestRecvBuffer__Push_And_Then_Read__Command_List_Should_Be_Nil(t *testing.T
 	assert.Nil(t, b.buf[3])
 	assert.Equal(t, 4, len(b.buf))
 
-	remaining, closed = b.push([]*commandData{
+	remaining, closed = b.push([]*commandListData{
 		newCommandFromString("mg key03 v\r\n"),
 		newCommandFromString("mg key04 v\r\n"),
 	})
@@ -445,7 +445,7 @@ func TestRecvBuffer__Push_And_Then_Read__Command_List_Should_Be_Nil(t *testing.T
 	assert.Equal(t, 0, len(remaining))
 
 	// Read Again
-	cmdList = make([]*commandData, 1024)
+	cmdList = make([]*commandListData, 1024)
 	size = b.read(cmdList)
 	assert.Equal(t, 2, size)
 
@@ -459,7 +459,7 @@ func TestRecvBuffer__Push_When_Closed(t *testing.T) {
 	var b recvBuffer
 	initRecvBuffer(&b, 1)
 
-	remaining, closed := b.push([]*commandData{
+	remaining, closed := b.push([]*commandListData{
 		newCommandFromString("mg key01 v\r\n"),
 		newCommandFromString("mg key02 v\r\n"),
 	})
@@ -470,11 +470,11 @@ func TestRecvBuffer__Push_When_Closed(t *testing.T) {
 
 	cmd3 := newCommandFromString("mg key03 v\r\n")
 
-	remaining, closed = b.push([]*commandData{cmd3})
+	remaining, closed = b.push([]*commandListData{cmd3})
 	assert.Equal(t, true, closed)
-	assert.Equal(t, []*commandData{cmd3}, remaining)
+	assert.Equal(t, []*commandListData{cmd3}, remaining)
 
-	cmdList := make([]*commandData, 1024)
+	cmdList := make([]*commandListData, 1024)
 	size := b.read(cmdList)
 	assert.Equal(t, 2, size)
 }
@@ -485,11 +485,11 @@ func TestRecvBuffer__Push_When_Closed__Concurrently_When_Reach_Limit(t *testing.
 
 	cmd1 := newCommandFromString("mg key01 v\r\n")
 
-	remaining, closed := b.push([]*commandData{cmd1})
+	remaining, closed := b.push([]*commandListData{cmd1})
 	assert.Equal(t, false, closed)
 	assert.Equal(t, 0, len(remaining))
 
-	cmdList := make([]*commandData, 1024)
+	cmdList := make([]*commandListData, 1024)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -503,16 +503,16 @@ func TestRecvBuffer__Push_When_Closed__Concurrently_When_Reach_Limit(t *testing.
 	cmd2 := newCommandFromString("mg key02 v\r\n")
 	cmd3 := newCommandFromString("mg key03 v\r\n")
 
-	remaining, closed = b.push([]*commandData{cmd2, cmd3})
+	remaining, closed = b.push([]*commandListData{cmd2, cmd3})
 
 	assert.Equal(t, true, closed)
-	assert.Equal(t, []*commandData{cmd3}, remaining)
+	assert.Equal(t, []*commandListData{cmd3}, remaining)
 
 	wg.Wait()
 
 	size := b.read(cmdList)
 	assert.Equal(t, 2, size)
-	assert.Equal(t, []*commandData{
+	assert.Equal(t, []*commandListData{
 		cmd1, cmd2,
 	}, cmdList[:2])
 }

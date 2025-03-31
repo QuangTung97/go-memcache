@@ -4,9 +4,11 @@ import (
 	"sync"
 )
 
+// sendBuffer is a singly-linked list of commandListData.
+// It's the buffer that receives command from pipelineSession when flushing.
 type sendBuffer struct {
-	firstCmd   *commandData
-	nextCmdPtr **commandData
+	firstCmd   *commandListData
+	nextCmdPtr **commandListData
 	closed     bool
 	mut        sync.Mutex
 	cond       *sync.Cond
@@ -22,7 +24,7 @@ func (b *sendBuffer) clearPointer() {
 	b.nextCmdPtr = &b.firstCmd
 }
 
-func (b *sendBuffer) push(cmd *commandData) (closed bool) {
+func (b *sendBuffer) push(cmd *commandListData) (closed bool) {
 	b.mut.Lock()
 
 	if b.closed {
@@ -45,7 +47,7 @@ func (b *sendBuffer) push(cmd *commandData) (closed bool) {
 	return false
 }
 
-func (b *sendBuffer) popAll(waiting bool) (cmdList *commandData, closed bool) {
+func (b *sendBuffer) popAll(waiting bool) (cmdList *commandListData, closed bool) {
 	b.mut.Lock()
 
 	for waiting && !b.closed && b.firstCmd == nil {

@@ -24,15 +24,15 @@ func newInputSelectorWithReadLimit(send *sendBuffer, writeCmdLimit int, readLimi
 	return s
 }
 
-func newCommandWithCount(s string, count int) *commandData {
+func newCommandWithCount(s string, count int) *commandListData {
 	cmd := newCommandFromString(s)
 	cmd.cmdCount = count
 	return cmd
 }
 
-func newCommandChain(list ...string) *commandData {
-	var last *commandData
-	var first *commandData
+func newCommandChain(list ...string) *commandListData {
+	var last *commandListData
+	var first *commandListData
 	for _, s := range list {
 		cmd := newCommandFromString(s)
 		if last == nil {
@@ -70,7 +70,7 @@ func TestInputSelector(t *testing.T) {
 		sendBuf := newSendBuffer()
 		s := newInputSelector(sendBuf, 2)
 
-		var cmds []*commandData
+		var cmds []*commandListData
 		var closed bool
 		var finished atomic.Bool
 		finishCh := make(chan struct{})
@@ -444,7 +444,7 @@ func TestInputSelector_With_ReadLimit(t *testing.T) {
 		send.push(newCommandWithCount("mg key03", 1))
 		send.push(newCommandWithCount("mg key04", 1))
 
-		placeholder := make([]*commandData, 0, 255)
+		placeholder := make([]*commandListData, 0, 255)
 		result, closed := s.readCommands(placeholder)
 		assert.Equal(t, false, closed)
 
@@ -470,7 +470,7 @@ func TestInputSelector_With_ReadLimit(t *testing.T) {
 		send.push(newCommandWithCount("mg key01", 1))
 		send.push(newCommandWithCount("mg key02", 1))
 
-		placeholder := make([]*commandData, 0, 255)
+		placeholder := make([]*commandListData, 0, 255)
 		result, closed := s.readCommands(placeholder)
 		assert.Equal(t, false, closed)
 
@@ -581,7 +581,7 @@ func TestInputSelector_Concurrent_With_Sibling(t *testing.T) {
 		defer consumeWg.Done()
 		defer close(recvChan)
 
-		tmpBuf := make([]*commandData, 0, 256)
+		tmpBuf := make([]*commandListData, 0, 256)
 
 		for {
 			var closed bool

@@ -7,6 +7,8 @@ import (
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
+// clientConn for controlling the TCP connection.
+// It starts a background goroutine to reconnect to the memcached server after timeout.
 type clientConn struct {
 	wg   sync.WaitGroup
 	core *coreConnection
@@ -15,8 +17,9 @@ type clientConn struct {
 
 	maxCommandsPerBatch int
 
+	// following fields are used for shutdown process only
 	mut       sync.Mutex
-	closed    bool
+	closed    bool // to avoid closing closeChan more than once
 	closeChan chan struct{}
 }
 
@@ -49,6 +52,7 @@ func newConn(
 		maxCommandsPerBatch: opts.maxCommandsPerBatch,
 	}
 
+	// start the background goroutine for reconnecting when the underling connection is broken
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -75,7 +79,7 @@ func newConn(
 	return c
 }
 
-func (c *clientConn) pushCommand(cmd *commandData) {
+func (c *clientConn) pushCommand(cmd *commandListData) {
 	c.core.publish(cmd)
 }
 

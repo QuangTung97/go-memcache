@@ -5,6 +5,9 @@ import (
 	"sync/atomic"
 )
 
+// inputSelector is for avoiding starvation.
+// For example, if a big pipeline with 100_000 mg ops followed by a small pipeline of 10 ops.
+// Then it will try to send small pipeline after **writeLimiter.writeLimit** before continuing sending the big pipeline.
 type inputSelector struct {
 	sendBuf      *sendBuffer
 	writeLimiter connWriteLimiter
@@ -15,9 +18,13 @@ type inputSelector struct {
 	readLimit int
 }
 
+// selectorCommandList is a singly-linked list. With:
+// - head: head of the linked-list
+// - last: address of last element's next pointer.
+// The **last** field is used to help append to the linked-list in O(1) time.
 type selectorCommandList struct {
-	head *commandData
-	last **commandData
+	head *commandListData
+	last **commandListData
 }
 
 func initSelectorCommandList(l *selectorCommandList) {
@@ -25,8 +32,10 @@ func initSelectorCommandList(l *selectorCommandList) {
 	l.last = &l.head
 }
 
-func (l *selectorCommandList) append(inputCmd *commandData) {
+func (l *selectorCommandList) append(inputCmd *commandListData) {
 	*l.last = inputCmd
+
+	// traverse the next.link and update the **last** pointer
 	next := inputCmd
 	for next != nil {
 		l.last = &next.link
@@ -62,8 +71,8 @@ type getNextCommandStatus struct {
 }
 
 func (s *inputSelector) getNextCommand(
-	cmdList *selectorCommandList, result []*commandData, justWaited *bool,
-) (newResult []*commandData, status getNextCommandStatus) {
+	cmdList *selectorCommandList, result []*commandListData, justWaited *bool,
+) (newResult []*commandListData, status getNextCommandStatus) {
 	if cmdList.head == nil {
 		return result, getNextCommandStatus{
 			allowMore: true,
@@ -120,7 +129,7 @@ type popAllStatus struct {
 	closed     bool
 }
 
-func (s *inputSelector) popAllThenRead(result []*commandData) ([]*commandData, popAllStatus) {
+func (s *inputSelector) popAllThenRead(result []*commandListData) ([]*commandListData, popAllStatus) {
 	popWaiting := s.isEmpty() && len(result) == 0
 	inputCmdList, closed := s.sendBuf.popAll(popWaiting)
 
@@ -149,7 +158,7 @@ func (s *inputSelector) popAllThenRead(result []*commandData) ([]*commandData, p
 	}
 }
 
-func (s *inputSelector) readCommands(placeholder []*commandData) ([]*commandData, bool) {
+func (s *inputSelector) readCommands(placeholder []*commandListData) ([]*commandListData, bool) {
 	result := placeholder
 	for {
 		var status popAllStatus
