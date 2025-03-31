@@ -15,7 +15,7 @@ type pipelineSession struct {
 
 	builder cmdBuilder
 
-	published     bool
+	published     bool // commands had already been pushed to sendBuffer
 	alreadyWaited bool
 
 	currentCmdList []*pipelineCmd

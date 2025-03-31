@@ -4,6 +4,8 @@ import (
 	"sync"
 )
 
+// sendBuffer is a singly-linked list of commandListData.
+// It's the buffer that receives command from pipelineSession when flushing.
 type sendBuffer struct {
 	firstCmd   *commandListData
 	nextCmdPtr **commandListData

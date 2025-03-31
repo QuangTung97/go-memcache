@@ -7,6 +7,7 @@ import (
 	"github.com/QuangTung97/go-memcache/memcache/netconn"
 )
 
+// coreConnection is the core data structure
 type coreConnection struct {
 	responseReader *responseReader
 	sender         *sender

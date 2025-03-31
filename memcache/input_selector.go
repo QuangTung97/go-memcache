@@ -20,7 +20,7 @@ type inputSelector struct {
 
 // selectorCommandList is a singly-linked list. With:
 // - head: head of the linked-list
-// - last: address of pointer that points to the last element.
+// - last: address of last element's next pointer.
 // The **last** field is used to help append to the linked-list in O(1) time.
 type selectorCommandList struct {
 	head *commandListData
