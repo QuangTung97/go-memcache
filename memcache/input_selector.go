@@ -7,7 +7,7 @@ import (
 
 // inputSelector is for avoiding starvation.
 // For example, if a big pipeline with 100_000 mg ops followed by a small pipeline of 10 ops.
-// Then it will try to send small pipeline after **readLimit** before continuing sending the big pipeline.
+// Then it will try to send small pipeline after **writeLimiter.writeLimit** before continuing sending the big pipeline.
 type inputSelector struct {
 	sendBuf      *sendBuffer
 	writeLimiter connWriteLimiter
@@ -18,6 +18,10 @@ type inputSelector struct {
 	readLimit int
 }
 
+// selectorCommandList is a singly-linked list. With:
+// - head: head of the linked-list
+// - last: address of pointer that points to the last element.
+// The **last** field is used to help append to the linked-list in O(1) time.
 type selectorCommandList struct {
 	head *commandListData
 	last **commandListData
@@ -30,6 +34,8 @@ func initSelectorCommandList(l *selectorCommandList) {
 
 func (l *selectorCommandList) append(inputCmd *commandListData) {
 	*l.last = inputCmd
+
+	// traverse the next.link and update the **last** pointer
 	next := inputCmd
 	for next != nil {
 		l.last = &next.link

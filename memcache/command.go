@@ -49,12 +49,12 @@ func (p *bytesPool) put(data []byte) {
 
 // commandListData is the main data-structure for storing:
 // - list of encoded commands produced by **cmdBuilder**.
-// - **cmdCount** is the number of commands (max value = memcacheOptions.maxCommandsPerBatch).
+// - **cmdCount** is the number of commands (cmdCount is always <= memcacheOptions.maxCommandsPerBatch).
 type commandListData struct {
 	cmdCount int
 
 	sibling *commandListData // for commands of the same pipeline
-	link    *commandListData // for linking to form a list
+	link    *commandListData // for linking to form a list of different pipelines
 
 	requestData  []byte
 	responseData []byte
