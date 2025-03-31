@@ -21,6 +21,8 @@ type pipelineSession struct {
 	currentCmdList []*pipelineCmd
 }
 
+// pipelineCmd for representing each command in a pipelineSession.
+// For example, calling MGet() will create a associated pipelineCmd.
 type pipelineCmd struct {
 	cmdType commandType
 
@@ -32,12 +34,14 @@ type pipelineCmd struct {
 	isRead bool
 }
 
-// Pipeline should NOT be used concurrently
+// Pipeline is a container of commands to reduce network round trips,
+// reduce number of sys-calls & improve performance.
+// It can NOT be used concurrently in multiple goroutines.
 type Pipeline struct {
 	client *Client
 	conn   *clientConn
 
-	currentSession *pipelineSession
+	currentSession *pipelineSession // one Pipeline could have multiple pipelineSession
 }
 
 func (p *Pipeline) newPipelineSession() *pipelineSession {

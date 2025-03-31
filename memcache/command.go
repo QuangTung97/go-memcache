@@ -62,7 +62,7 @@ type commandListData struct {
 	requestBinaries  *requestBinaryEntry // linked list of binary entries
 	responseBinaries [][]byte            // mget binary responses
 
-	conn *senderConnection
+	conn *senderConnection // TCP connection to read response data from
 
 	lastErr error
 	ch      chan error

@@ -16,6 +16,7 @@ type FlushWriter = netconn.FlushWriter
 
 //go:generate moq -out sender_mocks_test.go . FlushWriter closerInterface readCloserInterface
 
+// sender is the object that's responsible for getting from sendBuf and write to the underlining TCP connection.
 type sender struct {
 	// ---- protected by connMut ------
 	connMut     sync.Mutex
