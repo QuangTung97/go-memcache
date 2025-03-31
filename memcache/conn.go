@@ -75,7 +75,7 @@ func newConn(
 	return c
 }
 
-func (c *clientConn) pushCommand(cmd *commandData) {
+func (c *clientConn) pushCommand(cmd *commandListData) {
 	c.core.publish(cmd)
 }
 

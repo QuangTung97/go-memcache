@@ -20,7 +20,7 @@ type sender struct {
 	// ---- protected by connMut ------
 	connMut     sync.Mutex
 	conn        *senderConnection
-	tmpBuf      []*commandData
+	tmpBuf      []*commandListData
 	ncErrorCond *sync.Cond
 	closed      bool
 	// ---- end connMut protection ----
@@ -105,7 +105,7 @@ func (c *senderConnection) readData(data []byte) (int, error) {
 // Receiving Buffer
 // ----------------------------------
 type recvBuffer struct {
-	buf []*commandData
+	buf []*commandListData
 	mut sync.Mutex
 
 	mask  uint64
@@ -119,7 +119,7 @@ type recvBuffer struct {
 }
 
 func initRecvBuffer(b *recvBuffer, sizeLog int) {
-	b.buf = make([]*commandData, 1<<sizeLog)
+	b.buf = make([]*commandListData, 1<<sizeLog)
 	b.mask = 1<<sizeLog - 1
 	b.begin = 0
 	b.end = 0
@@ -127,7 +127,7 @@ func initRecvBuffer(b *recvBuffer, sizeLog int) {
 	b.recvCond = sync.NewCond(&b.mut)
 }
 
-func (b *recvBuffer) push(cmdList []*commandData) (remaining []*commandData, isClosed bool) {
+func (b *recvBuffer) push(cmdList []*commandListData) (remaining []*commandListData, isClosed bool) {
 	bufSize := uint64(len(b.buf))
 
 	for len(cmdList) > 0 {
@@ -163,7 +163,7 @@ func (b *recvBuffer) push(cmdList []*commandData) (remaining []*commandData, isC
 	return nil, false
 }
 
-func (b *recvBuffer) read(cmdList []*commandData) int {
+func (b *recvBuffer) read(cmdList []*commandListData) int {
 	b.mut.Lock()
 	for !b.closed && b.end == b.begin {
 		b.recvCond.Wait()
@@ -212,7 +212,7 @@ func newSender(nc netconn.NetConn, bufSizeLog int, writeLimit int) *sender {
 	return s
 }
 
-func clearCmdList(cmdList []*commandData) []*commandData {
+func clearCmdList(cmdList []*commandListData) []*commandListData {
 	for i, cmd := range cmdList {
 		freeCommandRequestData(cmd)
 		cmdList[i] = nil
@@ -259,7 +259,7 @@ func (s *sender) sendToWriter() (closed bool) {
 	return closed
 }
 
-func (s *sender) publish(cmd *commandData) {
+func (s *sender) publish(cmd *commandListData) {
 	closed := s.sendBuf.push(cmd)
 	if closed {
 		cmd.setCompleted(ErrConnClosed)
@@ -280,7 +280,7 @@ func (s *sender) runSenderJob() {
 	}
 }
 
-func (s *sender) readSentCommands(cmdList []*commandData) int {
+func (s *sender) readSentCommands(cmdList []*commandListData) int {
 	return s.recv.read(cmdList)
 }
 

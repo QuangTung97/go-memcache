@@ -47,11 +47,14 @@ func (p *bytesPool) put(data []byte) {
 	p.pool.Put(data)
 }
 
-type commandData struct {
+// commandListData is the main data-structure for storing:
+// - list of encoded commands produced by **cmdBuilder**.
+// - **cmdCount** is the number of commands (max value = memcacheOptions.maxCommandsPerBatch).
+type commandListData struct {
 	cmdCount int
 
-	sibling *commandData // for commands of the same pipeline
-	link    *commandData // for linking to form a list
+	sibling *commandListData // for commands of the same pipeline
+	link    *commandListData // for linking to form a list
 
 	requestData  []byte
 	responseData []byte
@@ -75,8 +78,8 @@ func newCommandChannel() chan error {
 	return make(chan error, 1)
 }
 
-func newCommand() *commandData {
-	c := &commandData{
+func newCommand() *commandListData {
+	c := &commandListData{
 		requestData:  requestBytesPool.get(),
 		responseData: responseBytesPool.get(),
 	}
@@ -84,7 +87,7 @@ func newCommand() *commandData {
 	return c
 }
 
-func (c *commandData) writeToWriter(w io.Writer) error {
+func (c *commandListData) writeToWriter(w io.Writer) error {
 	index := 0
 	for current := c.requestBinaries; current != nil; current = current.next {
 		if _, err := w.Write(c.requestData[index:current.offset]); err != nil {
@@ -105,7 +108,7 @@ func (c *commandData) writeToWriter(w io.Writer) error {
 	return nil
 }
 
-func freeCommandResponseData(cmd *commandData) {
+func freeCommandResponseData(cmd *commandListData) {
 	responseBytesPool.put(cmd.responseData)
 	cmd.responseData = nil
 
@@ -116,7 +119,7 @@ func freeCommandResponseData(cmd *commandData) {
 	cmd.responseBinaries = nil
 }
 
-func freeCommandRequestData(cmd *commandData) {
+func freeCommandRequestData(cmd *commandListData) {
 	requestBytesPool.put(cmd.requestData)
 	cmd.requestData = nil
 
@@ -126,11 +129,11 @@ func freeCommandRequestData(cmd *commandData) {
 	cmd.requestBinaries = nil
 }
 
-func (c *commandData) waitCompleted() {
+func (c *commandListData) waitCompleted() {
 	err := <-c.ch
 	c.lastErr = err
 }
 
-func (c *commandData) setCompleted(err error) {
+func (c *commandListData) setCompleted(err error) {
 	c.ch <- err
 }

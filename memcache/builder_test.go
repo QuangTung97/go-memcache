@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func (b *cmdBuilder) getCurrentCommandForTest() *commandData {
+func (b *cmdBuilder) getCurrentCommandForTest() *commandListData {
 	return b.cmd
 }
 
@@ -83,7 +83,7 @@ func TestBuilder_AddMGet_With_N_And_CAS(t *testing.T) {
 	assert.Equal(t, 4, cap(cmd.responseBinaries))
 }
 
-func traverseRequestBinaries(cmd *commandData) []requestBinaryEntry {
+func traverseRequestBinaries(cmd *commandListData) []requestBinaryEntry {
 	result := make([]requestBinaryEntry, 0)
 	for current := cmd.requestBinaries; current != nil; current = current.next {
 		e := *current

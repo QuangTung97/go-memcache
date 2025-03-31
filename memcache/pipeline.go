@@ -80,7 +80,7 @@ func (c *Client) Pipeline() *Pipeline {
 	return newPipeline(nil, c)
 }
 
-func (s *pipelineSession) parseCommands(cmdList *commandData) {
+func (s *pipelineSession) parseCommands(cmdList *commandListData) {
 	pipeCmds := s.currentCmdList
 	for current := cmdList; current != nil; current = current.sibling {
 		n := current.cmdCount
@@ -91,7 +91,7 @@ func (s *pipelineSession) parseCommands(cmdList *commandData) {
 
 func parseCommandsForSingleCommandData(
 	pipelineCommands []*pipelineCmd,
-	currentCmd *commandData,
+	currentCmd *commandListData,
 ) {
 	var ps parser
 	initParser(&ps, currentCmd.responseData, currentCmd.responseBinaries)
@@ -138,7 +138,7 @@ func parseCommandsForSingleCommandData(
 	}
 }
 
-func commandListWaitCompleted(cmdList *commandData) {
+func commandListWaitCompleted(cmdList *commandListData) {
 	for current := cmdList; current != nil; current = current.sibling {
 		current.waitCompleted()
 	}
@@ -183,7 +183,7 @@ func (p *Pipeline) getCurrentSession() *pipelineSession {
 	return p.currentSession
 }
 
-func (s *pipelineSession) pushCommands(cmd *commandData) {
+func (s *pipelineSession) pushCommands(cmd *commandListData) {
 	pipe := s.pipeline
 	pipe.conn.pushCommand(cmd)
 }
